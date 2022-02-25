@@ -1,12 +1,12 @@
-type exp = Num of number
+type expr = Num of number
          | Var of id
-         | Pair of exp * exp
-         | Ind1 of exp
-         | Ind2 of exp
-         | Sum of exp * exp
-         | Neg of exp
-         | Case of exp * exp * exp * exp
-         | If of exp * exp * exp
-         | Let of id * exp * exp
+         | Pair of expr * expr
+         | Fst of expr
+         | Snd of expr
+         | Add of expr * expr
+         | Neg of expr
+         | Case of expr * expr * expr * expr
+         | If of expr * expr * expr
+         | Let of id * expr * expr
 and number = int
 and id = string
