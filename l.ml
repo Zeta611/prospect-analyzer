@@ -5,7 +5,7 @@ type expr = Num of number
          | Snd of expr
          | Add of expr * expr
          | Neg of expr
-         | Case of expr * expr * expr * expr
+         | Case of expr * id * id * expr * expr
          | If of expr * expr * expr
          | Let of id * expr * expr
 and number = int

@@ -15,6 +15,12 @@ exception RunError of string
 let (@+) f (x, v) = (fun y -> if y = x then v else f y)
 let bind env (x, v) = env @+ (x, v)
 
+let rec print value =
+  match value with
+  | Num n -> print_int n
+  | Pair (fst, snd) ->
+    print_char '('; print fst; print_char ','; print snd; print_char ')'
+
 let rec eval env expr =
   match expr with
   | L.Num n -> Num n
@@ -46,14 +52,14 @@ let rec eval env expr =
     (match num with
     | Num n -> Num (-n)
     | _ -> raise (TypeError "NEGATE: not a number"))
-  | L.Case (x, choices, e1, e2) -> (* TODO: do structural matching? *)
-    (match eval env choices with
-    | Pair (Num y, Num z) ->
-      let v = eval env x in
-      (match v with
-      | Num n -> if n = y then eval env e1 else eval env e2
-      | _ -> raise (TypeError "CASE: x not a number"))
-    | _ -> raise (TypeError "CASE: choices not a pair of numbers"))
+  | L.Case (x, y, z, e1, e2) ->
+    let v = eval env x in
+    (match v with
+    | Pair (v1, v2) ->
+      let env' = bind env (y, v1) in
+      let env'' = bind env' (z, v2) in
+      eval env'' e1
+    | _ -> eval env e2)
   | L.If (pred, true_e, false_e) ->
     let v = eval env pred in
     (match v with
@@ -63,12 +69,6 @@ let rec eval env expr =
     let v = eval env exp in
     eval (bind env (x, v)) body
   | L.Var x -> env x
-
-let rec print value =
-  match value with
-  | Num n -> print_int n
-  | Pair (fst, snd) ->
-    print_char '('; print fst; print_char ','; print snd; print_char ')'
 
 let empty_env = fun x -> raise (RunError "undefined variable")
 
