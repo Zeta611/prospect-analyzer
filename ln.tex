@@ -1,0 +1,72 @@
+% !TEX program = xelatex
+\documentclass[a4paper]{article}
+
+\usepackage{simplebnf}
+
+\title{L$n$}
+\author{Jay}
+
+\begin{document}
+\maketitle
+
+\section*{L0: number, branch}
+\begin{bnfgrammar}
+  e ::=
+    n
+  | x
+  | e + e
+  | -e
+  | if e e e
+  | let x e e
+\end{bnfgrammar}
+
+\section*{L1: number, pair, branch}
+\begin{bnfgrammar}
+  e ::=
+    n
+  | x
+  | (e, e)
+  | e.1
+  | e.2
+  | e + e
+  | -e
+  | case x (y, z) e e
+  | if e e e
+  | let x e e
+\end{bnfgrammar}
+
+\section*{L2: number, pair, branch, loop}
+\begin{bnfgrammar}
+  e ::=
+    n
+  | x
+  | (e, e)
+  | e.1
+  | e.2
+  | e + e
+  | -e
+  | case x (y, z) e e
+  | if e e e
+  | let x e e
+  | repeat f x e e : let f(x) = e in f(e)
+  | f e
+\end{bnfgrammar}
+
+\section*{L3: number, pair, branch, function}
+\begin{bnfgrammar}
+  e ::=
+    n
+  | x
+  | (e, e)
+  | e.1
+  | e.2
+  | e + e
+  | -e
+  | case x (y, z) e e
+  | if e e e
+  | let x e e
+  | $\lambda$x.e
+  | rec f $\lambda$x.e
+  | e e
+\end{bnfgrammar}
+\end{document}
