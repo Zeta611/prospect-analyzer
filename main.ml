@@ -70,8 +70,12 @@ let rec eval env expr =
     eval (bind env (x, v)) body
   | L.Var x -> env x
 
-let empty_env = fun x -> raise (RunError "undefined variable")
+let (version, root_expr) = main ()
+let _ = print_string "Interpreter version: L"
+let _ = print_int version
+let _ = print_newline ()
 
-let result = eval empty_env (main ())
+let empty_env = fun x -> raise (RunError "undefined variable")
+let result = eval empty_env root_expr
 let _ = print result
 let _ = print_newline ()

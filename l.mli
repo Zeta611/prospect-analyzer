@@ -1,4 +1,5 @@
-type expr = Num of number
+type prog = Prog of int * expr
+and expr = Num of number
          | Var of id
          | Pair of expr * expr
          | Fst of expr

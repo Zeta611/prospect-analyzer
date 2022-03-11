@@ -1,6 +1,6 @@
 %start program
 
-%token <int> NUM
+%token <int> LANG NUM
 %token <string> VAR
 %token LPAR RPAR COMMA FST SND PLUS MINUS CASE IF LET EOF
 
@@ -8,14 +8,14 @@
 %nonassoc CASE IF
 %left PLUS MINUS
 %right FST SND
-%nonassoc NUM VAR LPAR RPAR COMMA EOF
+%nonassoc LANG NUM VAR LPAR RPAR COMMA EOF
 
-%type <L.expr> program
+%type <int * L.expr> program
 
 %%
 
 program:
-    expr EOF { $1 }
+    LANG expr EOF { ($1, $2) }
   ;
 expr:
     NUM { L.Num $1 }

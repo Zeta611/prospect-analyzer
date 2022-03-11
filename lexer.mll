@@ -13,6 +13,7 @@ let ulnum = ulph | digit
 let var = ulph ulnum*
 
 rule token = parse
+  | "# lang " (number as n) { LANG (int_of_string n) }
   | blank { token lexbuf }
   | newline { token lexbuf }
   | number as n { NUM (int_of_string n) }

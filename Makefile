@@ -1,5 +1,5 @@
-l1: lexer.cmo parser.cmo main.cmo
-	ocamlc -o l1 lexer.cmo parser.cmo main.cmo
+l: lexer.cmo parser.cmo main.cmo
+	ocamlc -o l lexer.cmo parser.cmo main.cmo
 
 main.cmo: lexer.ml parser.ml main.ml
 	ocamlc -c main.ml
@@ -28,4 +28,4 @@ lexer.cmo: lexer.ml parser.cmo
 
 .PHONY: clean
 clean:
-	rm -f *.cmi *.cmx *.o *.cmo parser.mli parser.ml lexer.mli lexer.ml l1
+	rm -f *.cmi *.cmx *.o *.cmo parser.mli parser.ml lexer.mli lexer.ml l
