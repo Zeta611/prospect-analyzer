@@ -6,13 +6,23 @@ and number = int
 and env = id -> value
 and id = string
 
-let rec vvalue_to_value = function
-  | L.VNum n -> Num n
-  | L.VPair (a, b) -> Pair (vvalue_to_value a, vvalue_to_value b)
+type comp_op = Eq (* =0 *)
+             | Ne (* ≠0 *)
+             | Lt (* <0 *)
+             (* | Gt (* >0 *) *)
+             (* | Le (* ≤0 *) *)
+             (* | Ge (* ≥0 *) *)
+and ih_coeffs = int list
+and cond_eqn = ih_coeffs * comp_op
 
 exception TypeError of string
 exception RunError of string
 exception VersionError of string
+
+(* Convert input-output value types to the `value` type *)
+let rec vvalue_to_value = function
+  | L.VNum n -> Num n
+  | L.VPair (a, b) -> Pair (vvalue_to_value a, vvalue_to_value b)
 
 (* Environment augmentation *)
 let (@+) f (x, v) = (fun y -> if y = x then v else f y)
@@ -67,7 +77,6 @@ let rec eval env expr =
     let v = eval env exp in
     eval (bind env (x, v)) body
   | L.Var x -> env x
-
 
 let main () =
   let lexbuf = Lexing.from_channel stdin in
