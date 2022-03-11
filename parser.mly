@@ -2,24 +2,35 @@
 
 %token <int> LANG NUM
 %token <string> VAR
-%token LPAR RPAR COMMA FST SND PLUS MINUS CASE IF LET EOF
+%token HASH HOLE LPAR RPAR COMMA FST SND PLUS MINUS CASE IF LET EOF
 
 %right LET
 %nonassoc CASE IF
 %left PLUS MINUS
 %right FST SND
-%nonassoc LANG NUM VAR LPAR RPAR COMMA EOF
+%nonassoc LANG NUM HOLE VAR LPAR RPAR COMMA EOF
 
-%type <int * L.expr> program
+%type <L.prog> program
 
 %%
 
 program:
-    LANG expr EOF { ($1, $2) }
+    version samples expr EOF { ($1, $2, $3) }
   ;
+version:
+    HASH LANG { $2 }
+  ;
+samples:
+    { [] }
+  |  HASH vexpr vexpr samples { ($2, $3) :: $4 }
+  ;
+vexpr:
+    NUM { L.VNum $1 }
+  | LPAR vexpr COMMA vexpr RPAR { L.VPair ($2, $4) }
 expr:
     NUM { L.Num $1 }
   | VAR { L.Var $1 }
+  | HOLE { L.Hole }
   | LPAR expr COMMA expr RPAR { L.Pair ($2, $4) }
   | LPAR expr RPAR { $2 }
   | expr FST { L.Fst $1 }

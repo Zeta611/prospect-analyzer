@@ -1,9 +1,14 @@
 (* Types and exceptions *)
-type value = Num of number
+type value = Hole
+           | Num of number
            | Pair of value * value
 and number = int
 and env = id -> value
 and id = string
+
+let rec vvalue_to_value = function
+  | L.VNum n -> Num n
+  | L.VPair (a, b) -> Pair (vvalue_to_value a, vvalue_to_value b)
 
 exception TypeError of string
 exception RunError of string
@@ -15,6 +20,7 @@ let bind env (x, v) = env @+ (x, v)
 
 let rec eval env expr =
   match expr with
+  | L.Hole -> Hole
   | L.Num n -> Num n
   | L.Pair (e1, e2) ->
     let v1 = eval env e1 in
@@ -68,7 +74,11 @@ let main () =
   let program = Parser.program Lexer.token lexbuf in
   program
 
-let (version, root_expr) = main ()
+(* samples is a list of input-output pairs *)
+let (version, samples, root_expr) = main ()
+let converted_samples = List.map
+  (fun (i, o) -> (vvalue_to_value i, vvalue_to_value o))
+  samples
 
 (* Process version *)
 let _ = print_string "Interpreter version: L"
@@ -94,15 +104,32 @@ let check_version version expr =
 
 let _ = check_version version root_expr
 
-(* Evaluate expression *)
+(* Evaluate expression for each input *)
 let empty_env = fun x -> raise (RunError "undefined variable")
-let result = eval empty_env root_expr
+let outputs = List.map
+  (fun i -> eval (bind empty_env ("x", i)) root_expr)
+  (List.map fst converted_samples)
 
-(* Print result *)
-let rec print value =
-  match value with
-  | Num n -> print_int n
-  | Pair (fst, snd) ->
-    print_char '('; print fst; print_char ','; print snd; print_char ')'
-let _ = print result
-let _ = print_newline ()
+(* Filter the outputs that do not match the user-provided outputs *)
+let diffs = List.filter
+  (fun p -> fst p <> snd (snd p))
+  (List.combine outputs converted_samples)
+
+(* Print results *)
+let _ = match diffs with
+  | [] -> print_string "All samples passed!\n"
+  | _ ->
+    let rec print value =
+      match value with
+      | Hole -> print_string "[]"
+      | Num n -> print_int n
+      | Pair (fst, snd) ->
+        print_char '('; print fst; print_char ','; print snd; print_char ')'
+    in
+    List.iter
+      (fun (o', (i, o)) ->
+        print_string "Input "; print i;
+        print_string " should output "; print o;
+        print_string ", but got "; print o';
+        print_newline ())
+      diffs
