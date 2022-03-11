@@ -1,8 +1,4 @@
-let main () =
-  let lexbuf = Lexing.from_channel stdin in
-  let program = Parser.program Lexer.token lexbuf in
-  program
-
+(* Types and exceptions *)
 type value = Num of number
            | Pair of value * value
 and number = int
@@ -11,15 +7,11 @@ and id = string
 
 exception TypeError of string
 exception RunError of string
+exception VersionError of string
 
+(* Environment augmentation *)
 let (@+) f (x, v) = (fun y -> if y = x then v else f y)
 let bind env (x, v) = env @+ (x, v)
-
-let rec print value =
-  match value with
-  | Num n -> print_int n
-  | Pair (fst, snd) ->
-    print_char '('; print fst; print_char ','; print snd; print_char ')'
 
 let rec eval env expr =
   match expr with
@@ -70,12 +62,47 @@ let rec eval env expr =
     eval (bind env (x, v)) body
   | L.Var x -> env x
 
+
+let main () =
+  let lexbuf = Lexing.from_channel stdin in
+  let program = Parser.program Lexer.token lexbuf in
+  program
+
 let (version, root_expr) = main ()
+
+(* Process version *)
 let _ = print_string "Interpreter version: L"
 let _ = print_int version
 let _ = print_newline ()
 
+let check_version version expr =
+  match version with
+  | 0 ->
+    (match expr with
+    | L.Pair _ ->
+      raise (VersionError "PAIR: not supported")
+    | L.Fst _ ->
+      raise (VersionError "FIRST: not supported")
+    | L.Snd _ ->
+      raise (VersionError "SECOND: not supported")
+    | L.Case _ ->
+      raise (VersionError "CASE: not supported")
+    | _ -> ())
+  | 1 -> ()
+  | _ ->
+    raise (VersionError "Version not supported")
+
+let _ = check_version version root_expr
+
+(* Evaluate expression *)
 let empty_env = fun x -> raise (RunError "undefined variable")
 let result = eval empty_env root_expr
+
+(* Print result *)
+let rec print value =
+  match value with
+  | Num n -> print_int n
+  | Pair (fst, snd) ->
+    print_char '('; print fst; print_char ','; print snd; print_char ')'
 let _ = print result
 let _ = print_newline ()
