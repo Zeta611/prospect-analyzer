@@ -94,7 +94,7 @@ let _ = print_string "Interpreter version: L"
 let _ = print_int version
 let _ = print_newline ()
 
-let check_version version expr =
+let rec check_version version expr =
   match version with
   | 0 ->
     (match expr with
@@ -106,7 +106,21 @@ let check_version version expr =
       raise (VersionError "SECOND: not supported")
     | L.Case _ ->
       raise (VersionError "CASE: not supported")
-    | _ -> ())
+    | L.Add (e1, e2) ->
+      check_version version e1;
+      check_version version e2
+    | L.Neg e ->
+      check_version version e
+    | L.If (e_p, e_t, e_f) ->
+      check_version version e_p;
+      check_version version e_t;
+      check_version version e_f
+    | L.Let (x, v, e) ->
+      check_version version v;
+      check_version version e
+    | L.Hole -> ()
+    | L.Num _ -> ()
+    | L.Var _ -> ())
   | 1 -> ()
   | _ ->
     raise (VersionError "Version not supported")
