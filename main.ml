@@ -103,6 +103,10 @@ let var_count = ref 0
 let new_var () =
   let _ = var_count := !var_count + 1 in
   "?t" ^ (string_of_int !var_count)
+let hol_count = ref 0
+let new_hol () =
+  let _ = hol_count := !hol_count + 1 in
+  "?h" ^ (string_of_int !hol_count)
 
 (* type env *)
 let lookup (x: id) (env: ty_env) : ty =
@@ -181,7 +185,9 @@ let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution list =
     ls''s's
   in
   match e with
-  | L.Hole -> [empty_subst]
+  | L.Hole ->
+    let h_t = TyVar (new_hol ()) in
+    [unify t h_t]
   | L.Num n -> [unify t TyInt]
   | L.Var x ->
     let x_t = lookup x env in
@@ -271,10 +277,12 @@ let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution list =
     let ls's = List.flatten lls's in
     ls's
 
-let type_check (e: L.expr): ty list  =
+(* Returns the possible combinations of the [] and the output *)
+let type_check (e: L.expr): (ty * ty) list  =
   let result_type = TyVar (new_var ()) in
+  let hole_type = TyVar ("?h" ^ string_of_int (!hol_count + 1)) in
   let ls = infer [] e result_type in
-  List.map (fun subst -> subst result_type) ls
+  List.map (fun subst -> subst hole_type, subst result_type) ls
 
 
 (* samples is a list of input-output pairs *)
@@ -336,16 +344,13 @@ let rec type_to_string = function
   | TyPair (e1, e2) -> "(" ^ type_to_string e1 ^ ", " ^ type_to_string e2 ^ ")"
   | TyHole -> "[]"
   | TyVar tv -> tv
-let rec print_type_list (types: ty list): unit =
+let rec print_type_list (types: (ty * ty) list): unit =
   match types with
-  | t :: t' :: ts ->
-    print_string (type_to_string t);
-    print_string " | ";
-    print_type_list (t' :: ts)
-  | t :: [] ->
-    print_endline (type_to_string t)
+  | (ht, ot) :: ps ->
+    print_endline ("| []: " ^ type_to_string ht ^ ", O: " ^ type_to_string ot);
+    print_type_list ps
   | [] ->
-    print_endline "EMPTY"
+    print_newline ()
 let _ = List.iter print_type_list out_types
 
 (* TODO: Update evaluation with holes *)
