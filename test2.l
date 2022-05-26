@@ -1,3 +1,3 @@
 # lang 1
 # (0, 1) (3, 1)
-(-(x.1 + x.2 + []), (0, [] + 3 + x.1))
+let h [] case (case h (u, v) u x) (y, z) (x, y) x

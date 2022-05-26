@@ -97,6 +97,8 @@ and hvty =
   | HVRight of hvty
 and ty_env = (id * ty) list
 
+exception UnificationError
+
 let var_count = ref 0
 let new_var () =
   let _ = var_count := !var_count + 1 in
@@ -149,17 +151,19 @@ let rec unify (t1: ty) (t2: ty): substitution =
       s' @* s
     | TyVar tv, t | t, TyVar tv ->
       if List.mem tv (tyvars_in_type t) then
-        raise (TypeError "Unification fail")
+        raise UnificationError
       else
         apply_subst (TyVar tv) t
-    | _ -> raise (TypeError "Unification fail")
+    | _ -> raise UnificationError
 
 let map3 (f: 'a -> 'b -> 'c -> 'd) (la: 'a list) (lb: 'b list) (lc: 'c list): 'd list =
   List.map2 (fun f c -> f c) (List.map2 f la lb) lc
+let map4 (f: 'a -> 'b -> 'c -> 'd -> 'e) (la: 'a list) (lb: 'b list) (lc: 'c list) (ld: 'd list): 'e list =
+  List.map2 (fun f d -> f d) (map3 f la lb lc) ld
 
 (* Modified M algorithm *)
 let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution list =
-  (* Generate a list of s''s's *)
+  (* Generate a list of s''s's from a non-branching expression with two subexpressions *)
   let gen_s''s's (t': ty) (e1: L.expr) (e2: L.expr) (t1: ty) (t2: ty): substitution list =
     let s = unify t t' in
     let ls' = infer (subst_env s env) e1 (s t1) in (* ls' = [s1'; s2'; ...; sn'] *)
@@ -180,8 +184,8 @@ let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution list =
   | L.Hole -> [empty_subst]
   | L.Num n -> [unify t TyInt]
   | L.Var x ->
-    let t' = lookup x env in
-    [unify t t']
+    let x_t = lookup x env in
+    [unify t x_t]
   | L.Pair (e1, e2) ->
     let t1 = TyVar (new_var ()) in
     let t2 = TyVar (new_var ()) in
@@ -198,9 +202,59 @@ let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution list =
     let ls's = List.map (fun s' -> s' @* s) ls' in
     ls's
   | L.Case (x, y, z, e1, e2) ->
-    failwith "Unimplemented"
+    (* x binds to (y, z) *)
+    let ls's_bind = (try
+      let y_t = TyVar (new_var ()) in
+      let z_t = TyVar (new_var ()) in
+      let ls = infer env x (TyPair (y_t, z_t)) in
+      let lenv' = List.map (fun s -> subst_env s env) ls in
+      let ly_t' = List.map (fun s -> s y_t) ls in
+      let lz_t' = List.map (fun s -> s z_t) ls in
+      let gen_s' env' y_t' z_t' s =
+        infer (bind_type y y_t' (bind_type z z_t' env')) e1 (s t)
+      in
+      let lls' = map4 gen_s' lenv' ly_t' lz_t' ls in
+      let lls's = List.map2
+        (fun s ls' -> List.map (fun s' -> s' @* s) ls')
+        ls lls'
+      in
+      let ls's = List.flatten lls's in
+      ls's
+    with UnificationError ->
+      [])
+    in
+    (* x is TyInt *)
+    let ls's_nbind = (try
+      let ls = infer env x TyInt in
+      let lenv' = List.map (fun s -> subst_env s env) ls in
+      let gen_s' env' s =
+        infer env' e2 (s t)
+      in
+      let lls' = List.map2 gen_s' lenv' ls in
+      let lls's = List.map2
+        (fun s ls' -> List.map (fun s' -> s' @* s) ls')
+        ls lls'
+      in
+      let ls's = List.flatten lls's in
+      ls's
+    with UnificationError ->
+      [])
+    in
+    ls's_bind @ ls's_nbind
   | L.If (e_p, e_t, e_f) ->
-    failwith "Unimplemented"
+    let ls = infer env e_p TyInt in
+    let gen_ls's e =
+      let lls' = List.map (fun s -> infer (subst_env s env) e (s t)) ls in
+      let lls's = List.map2
+        (fun s ls' -> List.map (fun s' -> s' @* s) ls')
+        ls lls'
+      in
+      let ls's = List.flatten lls's in
+      ls's
+    in
+    let ls's_t = gen_ls's e_t in
+    let ls's_f = gen_ls's e_f in
+    ls's_t @ ls's_f
   | L.Let (x, v, e) ->
     let x_t = TyVar (new_var ()) in
     let ls = infer env v x_t in
@@ -210,7 +264,12 @@ let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution list =
       infer (bind_type x x_t' env') e (s t)
     in
     let lls' = map3 gen_s' lenv' lx_t' ls in
-    List.flatten lls'
+    let lls's = List.map2
+      (fun s ls' -> List.map (fun s' -> s' @* s) ls')
+      ls lls'
+    in
+    let ls's = List.flatten lls's in
+    ls's
 
 let type_check (e: L.expr): ty list  =
   let result_type = TyVar (new_var ()) in
@@ -225,7 +284,8 @@ let converted_samples = List.map
   samples
 
 (* Process version *)
-let _ = print_string "Interpreter version: L"
+(* let _ = print_string "Interpreter version: L" *)
+let _ = print_string "Type checker version: L"
 let _ = print_int version
 let _ = print_newline ()
 
