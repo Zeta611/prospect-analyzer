@@ -8,7 +8,7 @@ and id = string
 
 type comp_op = Eq (* =0 *)
              | Ne (* ≠0 *)
-             | Lt (* <0 *)
+             (* | Lt (* <0 *) *)
              (* | Gt (* >0 *) *)
              (* | Le (* ≤0 *) *)
              (* | Ge (* ≥0 *) *)
@@ -83,6 +83,123 @@ let main () =
   let program = Parser.program Lexer.token lexbuf in
   program
 
+
+(* Type check *)
+type ty =
+  | TyInt
+  | TyPair of ty * ty
+  | TyHole (* of hvtype? *)
+  | TyVar of tyvar
+and tyvar = string
+and hvty =
+  | HVRoot
+  | HVLeft of hvty
+  | HVRight of hvty
+and ty_env = (id * ty) list
+
+let var_count = ref 0
+let new_var () =
+  let _ = var_count := !var_count + 1 in
+  "?t" ^ (string_of_int !var_count)
+
+(* type env *)
+let lookup (x: id) (env: ty_env) : ty =
+  try (List.assoc x env) with Not_found
+    -> raise (TypeError "Unbound type variable")
+let bind_type (x: id) (t: ty) (env: ty_env): ty_env = (x, t) :: env
+
+(* substitution *)
+type substitution = ty -> ty
+let empty_subst: substitution = fun t -> t
+let apply_subst (old_type: ty) (new_type: ty): substitution =
+  let _ = match old_type with
+    | TyVar _ -> ()
+    | _ -> failwith "ty not TyVar"
+  in
+  let rec subs t =
+    match t with
+    | TyPair (l, r) -> TyPair (subs l, subs r)
+    | _ -> if t = old_type then new_type else t
+  in
+  subs
+let subst_env (subs: substitution) (env: ty_env): ty_env =
+  List.map (fun (x, t) -> (x, subs t)) env
+
+let rec tyvars_in_type (t: ty): tyvar list =
+  let rec union (tyvars1: tyvar list) (tyvars2: tyvar list): tyvar list =
+    let tyvars1_sub_tyvars2 = List.filter (fun tv -> not (List.mem tv tyvars2)) tyvars1 in
+    tyvars1_sub_tyvars2 @ tyvars2
+  in
+  match t with
+  | TyInt -> []
+  | TyPair (t1, t2) -> union (tyvars_in_type t1) (tyvars_in_type t2)
+  | TyVar tyvar -> [tyvar]
+  | TyHole -> [] (* TODO *)
+
+let (@*) (subs': substitution) (subs: substitution): substitution =
+  fun t -> subs' (subs t)
+let rec unify (t1: ty) (t2: ty): substitution =
+  if t1 = t2 then
+    empty_subst
+  else
+    match (t1, t2) with
+    | TyPair (t1, t2), TyPair (t1', t2') ->
+      let s = unify t1 t1' in
+      let s' = unify t2 t2' in
+      s' @* s
+    | TyVar tv, t | t, TyVar tv ->
+      if List.mem tv (tyvars_in_type t) then
+        raise (TypeError "Unification fail")
+      else
+        apply_subst (TyVar tv) t
+    | _ -> raise (TypeError "Unification fail")
+
+(* M algorithm *)
+let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution =
+  match e with
+  | L.Hole -> empty_subst
+  | L.Num n -> unify t TyInt
+  | L.Var x ->
+    let t' = lookup x env in
+    unify t t'
+  | L.Pair (e1, e2) ->
+    let t1 = TyVar (new_var ()) in
+    let t2 = TyVar (new_var ()) in
+    let s = unify t (TyPair (t1, t2)) in
+    let s' = infer (subst_env s env) e1 (s t1) in
+    let s'' = infer (subst_env (s' @* s) env) e2 ((s' @* s) t2) in
+    s'' @* s' @* s
+  | L.Fst e ->
+    infer env e (TyPair (t, TyVar (new_var ())))
+  | L.Snd e ->
+    infer env e (TyPair (TyVar (new_var ()), t))
+  | L.Add (e1, e2) ->
+    let s = unify t TyInt in
+    let s' = infer (subst_env s env) e1 (s TyInt) in
+    let s'' = infer (subst_env (s' @* s) env) e2 ((s' @* s) TyInt) in
+    s'' @* s' @* s
+  | L.Neg e ->
+    let s = unify t TyInt in
+    let s' = infer (subst_env s env) e (s TyInt) in
+    s' @* s
+  | L.Case (x, y, z, e1, e2) ->
+    failwith "Unimplemented"
+  | L.If (e_p, e_t, e_f) ->
+    failwith "Unimplemented"
+  | L.Let (x, v, e) ->
+    let x_t = TyVar (new_var ()) in
+    let s = infer env v x_t in
+    let env' = subst_env s env in
+    let x_t' = s x_t in
+    let s' = infer (bind_type x x_t' env') e (s t) in
+    s' @* s
+
+let type_check (e: L.expr): ty  =
+  let result_type = TyVar (new_var ()) in
+  let subst = infer [] e result_type in
+  subst result_type
+
+
 (* samples is a list of input-output pairs *)
 let (version, samples, root_expr) = main ()
 let converted_samples = List.map
@@ -126,33 +243,53 @@ let rec check_version version expr =
     raise (VersionError "Version not supported")
 
 let _ = check_version version root_expr
+let out_types =
+  let rec val_to_expr = function
+    | Hole -> L.Hole
+    | Num n -> L.Num n
+    | Pair (v1, v2) -> L.Pair (val_to_expr v1, val_to_expr v2)
+  in
+  List.map
+    (fun i -> type_check (L.Let ("x", i, root_expr)))
+    (List.map (fun p -> val_to_expr @@ fst @@ p) converted_samples)
 
-(* Evaluate expression for each input *)
-let empty_env = fun x -> raise (RunError "undefined variable")
-let outputs = List.map
-  (fun i -> eval (bind empty_env ("x", i)) root_expr)
-  (List.map fst converted_samples)
+let rec type_to_string = function
+  | TyInt -> "i"
+  | TyPair (e1, e2) -> "(" ^ type_to_string e1 ^ ", " ^ type_to_string e2 ^ ")"
+  | TyHole -> "[]"
+  | TyVar tv -> tv
 
-(* Filter the outputs that do not match the user-provided outputs *)
-let diffs = List.filter
-  (fun p -> fst p <> snd (snd p))
-  (List.combine outputs converted_samples)
+let _ = List.iter
+  (fun t -> print_string (type_to_string t); print_newline ())
+  out_types
 
-(* Print results *)
-let _ = match diffs with
-  | [] -> print_string "All samples passed!\n"
-  | _ ->
-    let rec print value =
-      match value with
-      | Hole -> print_string "[]"
-      | Num n -> print_int n
-      | Pair (fst, snd) ->
-        print_char '('; print fst; print_char ','; print snd; print_char ')'
-    in
-    List.iter
-      (fun (o', (i, o)) ->
-        print_string "Input "; print i;
-        print_string " should output "; print o;
-        print_string ", but got "; print o';
-        print_newline ())
-      diffs
+(* TODO: Update evaluation with holes *)
+(* (* Evaluate expression for each input *) *)
+(* let empty_env = fun x -> raise (RunError "undefined variable") *)
+(* let outputs = List.map *)
+(*   (fun i -> eval (bind empty_env ("x", i)) root_expr) *)
+(*   (List.map fst converted_samples) *)
+(*  *)
+(* (* Filter the outputs that do not match the user-provided outputs *) *)
+(* let diffs = List.filter *)
+(*   (fun p -> fst p <> snd (snd p)) *)
+(*   (List.combine outputs converted_samples) *)
+(*  *)
+(* (* Print results *) *)
+(* let _ = match diffs with *)
+(*   | [] -> print_string "All samples passed!\n" *)
+(*   | _ -> *)
+(*     let rec print value = *)
+(*       match value with *)
+(*       | Hole -> print_string "[]" *)
+(*       | Num n -> print_int n *)
+(*       | Pair (fst, snd) -> *)
+(*         print_char '('; print fst; print_char ','; print snd; print_char ')' *)
+(*     in *)
+(*     List.iter *)
+(*       (fun (o', (i, o)) -> *)
+(*         print_string "Input "; print i; *)
+(*         print_string " should output "; print o; *)
+(*         print_string ", but got "; print o'; *)
+(*         print_newline ()) *)
+(*       diffs *)
