@@ -154,50 +154,68 @@ let rec unify (t1: ty) (t2: ty): substitution =
         apply_subst (TyVar tv) t
     | _ -> raise (TypeError "Unification fail")
 
-(* M algorithm *)
-let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution =
+let map3 (f: 'a -> 'b -> 'c -> 'd) (la: 'a list) (lb: 'b list) (lc: 'c list): 'd list =
+  List.map2 (fun f c -> f c) (List.map2 f la lb) lc
+
+(* Modified M algorithm *)
+let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution list =
+  (* Generate a list of s''s's *)
+  let gen_s''s's (t': ty) (e1: L.expr) (e2: L.expr) (t1: ty) (t2: ty): substitution list =
+    let s = unify t t' in
+    let ls' = infer (subst_env s env) e1 (s t1) in (* ls' = [s1'; s2'; ...; sn'] *)
+    let gen_s'' s' =
+      (* use each s' and combine with s to generate a new list of s''  *)
+      infer (subst_env (s' @* s) env) e2 ((s' @* s) t2)
+    in
+    let lls'' = List.map gen_s'' ls' in (* lls'' = [[s11''; ...]; ...; [s1n''; ...]] *)
+    let lls''s' = List.map2 (* possibly better to use tail-recursive rev_map2 *)
+      (fun s' ls'' -> List.map (fun s'' -> s'' @* s') ls'')
+      ls' lls''
+    in (* lls''s' = [[s11'' s1'; ...]; ...; [s1n'' sn'; ...]] *)
+    let ls''s' = List.flatten lls''s' in
+    let ls''s's = List.map (fun s''s' -> s''s' @* s) ls''s' in
+    ls''s's
+  in
   match e with
-  | L.Hole -> empty_subst
-  | L.Num n -> unify t TyInt
+  | L.Hole -> [empty_subst]
+  | L.Num n -> [unify t TyInt]
   | L.Var x ->
     let t' = lookup x env in
-    unify t t'
+    [unify t t']
   | L.Pair (e1, e2) ->
     let t1 = TyVar (new_var ()) in
     let t2 = TyVar (new_var ()) in
-    let s = unify t (TyPair (t1, t2)) in
-    let s' = infer (subst_env s env) e1 (s t1) in
-    let s'' = infer (subst_env (s' @* s) env) e2 ((s' @* s) t2) in
-    s'' @* s' @* s
+    gen_s''s's (TyPair (t1, t2)) e1 e2 t1 t2
   | L.Fst e ->
     infer env e (TyPair (t, TyVar (new_var ())))
   | L.Snd e ->
     infer env e (TyPair (TyVar (new_var ()), t))
   | L.Add (e1, e2) ->
-    let s = unify t TyInt in
-    let s' = infer (subst_env s env) e1 (s TyInt) in
-    let s'' = infer (subst_env (s' @* s) env) e2 ((s' @* s) TyInt) in
-    s'' @* s' @* s
+    gen_s''s's TyInt e1 e2 TyInt TyInt
   | L.Neg e ->
     let s = unify t TyInt in
-    let s' = infer (subst_env s env) e (s TyInt) in
-    s' @* s
+    let ls' = infer (subst_env s env) e (s TyInt) in
+    let ls's = List.map (fun s' -> s' @* s) ls' in
+    ls's
   | L.Case (x, y, z, e1, e2) ->
     failwith "Unimplemented"
   | L.If (e_p, e_t, e_f) ->
     failwith "Unimplemented"
   | L.Let (x, v, e) ->
     let x_t = TyVar (new_var ()) in
-    let s = infer env v x_t in
-    let env' = subst_env s env in
-    let x_t' = s x_t in
-    let s' = infer (bind_type x x_t' env') e (s t) in
-    s' @* s
+    let ls = infer env v x_t in
+    let lenv' = List.map (fun s -> subst_env s env) ls in
+    let lx_t' = List.map (fun s -> s x_t) ls in
+    let gen_s' env' x_t' s =
+      infer (bind_type x x_t' env') e (s t)
+    in
+    let lls' = map3 gen_s' lenv' lx_t' ls in
+    List.flatten lls'
 
-let type_check (e: L.expr): ty  =
+let type_check (e: L.expr): ty list  =
   let result_type = TyVar (new_var ()) in
-  let subst = infer [] e result_type in
-  subst result_type
+  let ls = infer [] e result_type in
+  List.map (fun subst -> subst result_type) ls
 
 
 (* samples is a list of input-output pairs *)
@@ -258,10 +276,17 @@ let rec type_to_string = function
   | TyPair (e1, e2) -> "(" ^ type_to_string e1 ^ ", " ^ type_to_string e2 ^ ")"
   | TyHole -> "[]"
   | TyVar tv -> tv
-
-let _ = List.iter
-  (fun t -> print_string (type_to_string t); print_newline ())
-  out_types
+let rec print_type_list (types: ty list): unit =
+  match types with
+  | t :: t' :: ts ->
+    print_string (type_to_string t);
+    print_string " | ";
+    print_type_list (t' :: ts)
+  | t :: [] ->
+    print_endline (type_to_string t)
+  | [] ->
+    print_endline "EMPTY"
+let _ = List.iter print_type_list out_types
 
 (* TODO: Update evaluation with holes *)
 (* (* Evaluate expression for each input *) *)
