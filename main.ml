@@ -121,11 +121,11 @@ let rec type_to_string = function
 let var_count = ref 0
 let new_var () =
   let _ = var_count := !var_count + 1 in
-  "?t" ^ (string_of_int !var_count)
+  "t" ^ (string_of_int !var_count)
 (* let hol_count = ref 0 *)
 (* let new_hol () = *)
 (*   let _ = hol_count := !hol_count + 1 in *)
-(*   "?h" ^ (string_of_int !hol_count) *)
+(*   "h" ^ (string_of_int !hol_count) *)
 
 (* type env *)
 let lookup (x: id) (env: ty_env) : ty =
@@ -302,7 +302,7 @@ let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution list =
 (* Returns the possible combinations of the [] and the output *)
 let type_check (e: L.expr): (ty * ty) list  =
   let result_type = TyVar (new_var ()) in
-  (* let hole_type = TyVar ("?h" ^ string_of_int (!hol_count + 1)) in *)
+  (* let hole_type = TyVar ("h" ^ string_of_int (!hol_count + 1)) in *)
   let hole_type = TyVar "[]" in
   let ls = infer [] e result_type in
   List.map (fun subst -> subst hole_type, subst result_type) ls
