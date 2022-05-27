@@ -19,6 +19,19 @@ exception TypeError of string
 exception RunError of string
 exception VersionError of string
 
+let rec expr_to_string = function
+  | L.Hole -> "[]"
+  | L.Num n -> string_of_int n
+  | L.Pair (e1, e2) -> "(" ^ expr_to_string e1 ^ "," ^ expr_to_string e2 ^ ")"
+  | L.Fst e -> expr_to_string e ^ ".1"
+  | L.Snd e -> expr_to_string e ^ ".2"
+  | L.Add (e1, e2) -> expr_to_string e1 ^ "+" ^ expr_to_string e2
+  | L.Neg e -> "-" ^ expr_to_string e
+  | L.Case (x, y, z, e1, e2) -> "case " ^ expr_to_string x ^ " (" ^ y ^ "," ^ z ^ ") " ^ expr_to_string e1 ^ " " ^ expr_to_string e2
+  | L.If (e_p, e_t, e_f) -> "if " ^ expr_to_string e_p ^ " " ^ expr_to_string e_t ^ " " ^ expr_to_string e_f
+  | L.Let (x, exp, body) -> "let " ^ x ^ " " ^ expr_to_string exp ^ " " ^ expr_to_string body
+  | L.Var x -> x
+
 (* Convert input-output value types to the `value` type *)
 let rec vvalue_to_value = function
   | L.VNum n -> Num n
@@ -99,14 +112,20 @@ and ty_env = (id * ty) list
 
 exception UnificationError
 
+let rec type_to_string = function
+  | TyInt -> "i"
+  | TyPair (e1, e2) -> "(" ^ type_to_string e1 ^ ", " ^ type_to_string e2 ^ ")"
+  | TyHole -> "[]"
+  | TyVar tv -> tv
+
 let var_count = ref 0
 let new_var () =
   let _ = var_count := !var_count + 1 in
   "?t" ^ (string_of_int !var_count)
-let hol_count = ref 0
-let new_hol () =
-  let _ = hol_count := !hol_count + 1 in
-  "?h" ^ (string_of_int !hol_count)
+(* let hol_count = ref 0 *)
+(* let new_hol () = *)
+(*   let _ = hol_count := !hol_count + 1 in *)
+(*   "?h" ^ (string_of_int !hol_count) *)
 
 (* type env *)
 let lookup (x: id) (env: ty_env) : ty =
@@ -145,6 +164,7 @@ let rec tyvars_in_type (t: ty): tyvar list =
 let (@*) (subs': substitution) (subs: substitution): substitution =
   fun t -> subs' (subs t)
 let rec unify (t1: ty) (t2: ty): substitution =
+  (* let _ = print_endline ("Unify " ^ type_to_string t1 ^ " & " ^ type_to_string t2) in *)
   if t1 = t2 then
     empty_subst
   else
@@ -167,6 +187,7 @@ let map4 (f: 'a -> 'b -> 'c -> 'd -> 'e) (la: 'a list) (lb: 'b list) (lc: 'c lis
 
 (* Modified M algorithm *)
 let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution list =
+  (* let _ = print_endline ("M (Gamma, " ^ expr_to_string e ^ ", " ^ type_to_string t ^ ")") in *)
   (* Generate a list of s''s's from a non-branching expression with two subexpressions *)
   let gen_s''s's (t': ty) (e1: L.expr) (e2: L.expr) (t1: ty) (t2: ty): substitution list =
     let s = unify t t' in
@@ -186,7 +207,8 @@ let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution list =
   in
   match e with
   | L.Hole ->
-    let h_t = TyVar (new_hol ()) in
+    (* let h_t = TyVar (new_hol ()) in *)
+    let h_t = TyVar "[]" in
     [unify t h_t]
   | L.Num n -> [unify t TyInt]
   | L.Var x ->
@@ -280,7 +302,8 @@ let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution list =
 (* Returns the possible combinations of the [] and the output *)
 let type_check (e: L.expr): (ty * ty) list  =
   let result_type = TyVar (new_var ()) in
-  let hole_type = TyVar ("?h" ^ string_of_int (!hol_count + 1)) in
+  (* let hole_type = TyVar ("?h" ^ string_of_int (!hol_count + 1)) in *)
+  let hole_type = TyVar "[]" in
   let ls = infer [] e result_type in
   List.map (fun subst -> subst hole_type, subst result_type) ls
 
@@ -339,11 +362,6 @@ let out_types =
     (fun i -> type_check (L.Let ("x", i, root_expr)))
     (List.map (fun p -> val_to_expr @@ fst @@ p) converted_samples)
 
-let rec type_to_string = function
-  | TyInt -> "i"
-  | TyPair (e1, e2) -> "(" ^ type_to_string e1 ^ ", " ^ type_to_string e2 ^ ")"
-  | TyHole -> "[]"
-  | TyVar tv -> tv
 let rec print_type_list (types: (ty * ty) list): unit =
   match types with
   | (ht, ot) :: ps ->
