@@ -122,10 +122,6 @@ let var_count = ref 0
 let new_var () =
   let _ = var_count := !var_count + 1 in
   "τ" ^ (string_of_int !var_count)
-(* let hol_count = ref 0 *)
-(* let new_hol () = *)
-(*   let _ = hol_count := !hol_count + 1 in *)
-(*   "h" ^ (string_of_int !hol_count) *)
 
 (* type env *)
 let lookup (x: id) (env: ty_env) : ty =
@@ -207,7 +203,6 @@ let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution list =
   in
   match e with
   | L.Hole ->
-    (* let h_t = TyVar (new_hol ()) in *)
     let h_t = TyVar "τ" in
     [unify t h_t]
   | L.Num n -> [unify t TyInt]
@@ -300,12 +295,10 @@ let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution list =
     ls's
 
 (* Returns the possible combinations of the [] and the output *)
-let type_check (e: L.expr): (ty * ty) list  =
-  let result_type = TyVar (new_var ()) in
-  (* let hole_type = TyVar ("h" ^ string_of_int (!hol_count + 1)) in *)
+let type_check (e: L.expr) (t: ty): (ty * ty) list  =
   let hole_type = TyVar "τ" in
-  let ls = infer [] e result_type in
-  List.map (fun subst -> subst hole_type, subst result_type) ls
+  let ls = infer [] e t in
+  List.map (fun subst -> subst hole_type, subst t) ls
 
 
 (* samples is a list of input-output pairs *)
@@ -358,9 +351,16 @@ let out_types =
     | Num n -> L.Num n
     | Pair (v1, v2) -> L.Pair (val_to_expr v1, val_to_expr v2)
   in
+  let rec val_to_type = function
+    | Hole -> failwith "Hole should not exist in output"
+    | Num _ -> TyInt
+    | Pair (v1, v2) -> TyPair (val_to_type v1, val_to_type v2)
+  in
   List.map
-    (fun i -> type_check (L.Let ("x", i, root_expr)))
-    (List.map (fun p -> val_to_expr @@ fst @@ p) converted_samples)
+    (fun (i, t) -> type_check (L.Let ("x", i, root_expr)) t)
+    (List.map
+       (fun p -> val_to_expr @@ fst @@ p, val_to_type @@ snd @@ p)
+       converted_samples)
 
 let rec print_type_list (types: (ty * ty) list): unit =
   match types with
@@ -369,7 +369,10 @@ let rec print_type_list (types: (ty * ty) list): unit =
     print_type_list ps
   | [] ->
     print_newline ()
-let _ = List.iter print_type_list out_types
+let _ =
+  if List.flatten out_types = []
+  then print_endline "Unsatisfiable!"
+  else List.iter print_type_list out_types
 
 (* TODO: Update evaluation with holes *)
 (* (* Evaluate expression for each input *) *)
