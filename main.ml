@@ -113,7 +113,7 @@ and ty_env = (id * ty) list
 exception UnificationError
 
 let rec type_to_string = function
-  | TyInt -> "i"
+  | TyInt -> "ι"
   | TyPair (e1, e2) -> "(" ^ type_to_string e1 ^ ", " ^ type_to_string e2 ^ ")"
   | TyHole -> "[]"
   | TyVar tv -> tv
@@ -121,7 +121,7 @@ let rec type_to_string = function
 let var_count = ref 0
 let new_var () =
   let _ = var_count := !var_count + 1 in
-  "t" ^ (string_of_int !var_count)
+  "τ" ^ (string_of_int !var_count)
 (* let hol_count = ref 0 *)
 (* let new_hol () = *)
 (*   let _ = hol_count := !hol_count + 1 in *)
@@ -208,7 +208,7 @@ let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution list =
   match e with
   | L.Hole ->
     (* let h_t = TyVar (new_hol ()) in *)
-    let h_t = TyVar "[]" in
+    let h_t = TyVar "τ" in
     [unify t h_t]
   | L.Num n -> [unify t TyInt]
   | L.Var x ->
@@ -303,7 +303,7 @@ let rec infer (env: ty_env) (e: L.expr) (t: ty): substitution list =
 let type_check (e: L.expr): (ty * ty) list  =
   let result_type = TyVar (new_var ()) in
   (* let hole_type = TyVar ("h" ^ string_of_int (!hol_count + 1)) in *)
-  let hole_type = TyVar "[]" in
+  let hole_type = TyVar "τ" in
   let ls = infer [] e result_type in
   List.map (fun subst -> subst hole_type, subst result_type) ls
 

@@ -1,3 +1,3 @@
 # lang 1
 # (0, 1) (3, 1)
-let h [] case (case h (u, v) u x) (y, z) (x, y) x
+let h [] case (case h.1 (u, v) u x) (y, z) (x, y) x
