@@ -196,6 +196,16 @@ let map4 (f : 'a -> 'b -> 'c -> 'd -> 'e) (la : 'a list) (lb : 'b list)
     (lc : 'c list) (ld : 'd list) : 'e list =
   List.map2 (fun f d -> f d) (map3 f la lb lc) ld
 
+(* Taken path that should accompany a substitutions *)
+type path =
+  | PNil
+  | PPair of path * path
+  | PPAdd of path * path
+  | PCaseP of path * path
+  | PCaseN of path * path
+  | PIfTru of path * path
+  | PLet of path * path
+
 (* Modified M algorithm *)
 let rec infer (env : ty_env) (e : L.expr) (t : ty) : substitution list =
   (* let _ = print_endline ("M (Gamma, " ^ expr_to_string e ^ ", " ^
