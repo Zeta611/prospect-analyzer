@@ -223,30 +223,30 @@ let rec infer (env : ty_env) (e : L.expr) (t : ty) : substitution list =
     let ls''s's = List.map (fun s''s' -> s''s' @* s) ls''s' in
     ls''s's
   in
-  match e with
-  | L.Hole ->
-      let h_t = TyVar "τ" in
-      [ unify t h_t ]
-  | L.Num n -> [ unify t TyInt ]
-  | L.Var x ->
-      let x_t = lookup x env in
-      [ unify t x_t ]
-  | L.Pair (e1, e2) ->
-      let t1 = TyVar (new_var ()) in
-      let t2 = TyVar (new_var ()) in
-      gen_s''s's (TyPair (t1, t2)) e1 e2 t1 t2
-  | L.Fst e -> infer env e (TyPair (t, TyVar (new_var ())))
-  | L.Snd e -> infer env e (TyPair (TyVar (new_var ()), t))
-  | L.Add (e1, e2) -> gen_s''s's TyInt e1 e2 TyInt TyInt
-  | L.Neg e ->
-      let s = unify t TyInt in
-      let ls' = infer (subst_env s env) e (s TyInt) in
-      let ls's = List.map (fun s' -> s' @* s) ls' in
-      ls's
-  | L.Case (x, y, z, e1, e2) ->
-      (* x binds to (y, z) *)
-      let ls's_bind =
-        try
+  try
+    match e with
+    | L.Hole ->
+        let h_t = TyVar "τ" in
+        [ unify t h_t ]
+    | L.Num n -> [ unify t TyInt ]
+    | L.Var x ->
+        let x_t = lookup x env in
+        [ unify t x_t ]
+    | L.Pair (e1, e2) ->
+        let t1 = TyVar (new_var ()) in
+        let t2 = TyVar (new_var ()) in
+        gen_s''s's (TyPair (t1, t2)) e1 e2 t1 t2
+    | L.Fst e -> infer env e (TyPair (t, TyVar (new_var ())))
+    | L.Snd e -> infer env e (TyPair (TyVar (new_var ()), t))
+    | L.Add (e1, e2) -> gen_s''s's TyInt e1 e2 TyInt TyInt
+    | L.Neg e ->
+        let s = unify t TyInt in
+        let ls' = infer (subst_env s env) e (s TyInt) in
+        let ls's = List.map (fun s' -> s' @* s) ls' in
+        ls's
+    | L.Case (x, y, z, e1, e2) ->
+        (* x binds to (y, z) *)
+        let ls's_bind =
           let y_t = TyVar (new_var ()) in
           let z_t = TyVar (new_var ()) in
           let ls = infer env x (TyPair (y_t, z_t)) in
@@ -262,11 +262,9 @@ let rec infer (env : ty_env) (e : L.expr) (t : ty) : substitution list =
           in
           let ls's = List.flatten lls's in
           ls's
-        with UnificationError -> []
-      in
-      (* x is TyInt *)
-      let ls's_nbind =
-        try
+        in
+        (* x is TyInt *)
+        let ls's_nbind =
           let ls = infer env x TyInt in
           let lenv' = List.map (fun s -> subst_env s env) ls in
           let gen_s' env' s = infer env' e2 (s t) in
@@ -276,34 +274,34 @@ let rec infer (env : ty_env) (e : L.expr) (t : ty) : substitution list =
           in
           let ls's = List.flatten lls's in
           ls's
-        with UnificationError -> []
-      in
-      ls's_bind @ ls's_nbind
-  | L.If (e_p, e_t, e_f) ->
-      let ls = infer env e_p TyInt in
-      let gen_ls's e =
-        let lls' = List.map (fun s -> infer (subst_env s env) e (s t)) ls in
+        in
+        ls's_bind @ ls's_nbind
+    | L.If (e_p, e_t, e_f) ->
+        let ls = infer env e_p TyInt in
+        let gen_ls's e =
+          let lls' = List.map (fun s -> infer (subst_env s env) e (s t)) ls in
+          let lls's =
+            List.map2 (fun s ls' -> List.map (fun s' -> s' @* s) ls') ls lls'
+          in
+          let ls's = List.flatten lls's in
+          ls's
+        in
+        let ls's_t = gen_ls's e_t in
+        let ls's_f = gen_ls's e_f in
+        ls's_t @ ls's_f
+    | L.Let (x, v, e) ->
+        let x_t = TyVar (new_var ()) in
+        let ls = infer env v x_t in
+        let lenv' = List.map (fun s -> subst_env s env) ls in
+        let lx_t' = List.map (fun s -> s x_t) ls in
+        let gen_s' env' x_t' s = infer ((x, x_t') :: env') e (s t) in
+        let lls' = map3 gen_s' lenv' lx_t' ls in
         let lls's =
           List.map2 (fun s ls' -> List.map (fun s' -> s' @* s) ls') ls lls'
         in
         let ls's = List.flatten lls's in
         ls's
-      in
-      let ls's_t = gen_ls's e_t in
-      let ls's_f = gen_ls's e_f in
-      ls's_t @ ls's_f
-  | L.Let (x, v, e) ->
-      let x_t = TyVar (new_var ()) in
-      let ls = infer env v x_t in
-      let lenv' = List.map (fun s -> subst_env s env) ls in
-      let lx_t' = List.map (fun s -> s x_t) ls in
-      let gen_s' env' x_t' s = infer ((x, x_t') :: env') e (s t) in
-      let lls' = map3 gen_s' lenv' lx_t' ls in
-      let lls's =
-        List.map2 (fun s ls' -> List.map (fun s' -> s' @* s) ls') ls lls'
-      in
-      let ls's = List.flatten lls's in
-      ls's
+  with UnificationError -> []
 
 (* Returns the possible combinations of the [] and the output *)
 let type_check (e : L.expr) (t : ty) : (ty * ty) list =
@@ -372,7 +370,7 @@ let rec print_type_list (types : (ty * ty) list) : unit =
   | (ht, ot) :: ps ->
       print_endline ("| []: " ^ type_to_string ht ^ ", O: " ^ type_to_string ot);
       print_type_list ps
-  | [] -> print_newline ()
+  | [] -> ()
 
 let _ =
   if List.flatten out_types = [] then print_endline "Unsatisfiable!"
