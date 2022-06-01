@@ -1,0 +1,220 @@
+%%
+%% This is file `simplebnf.sty'.
+%%
+%% ---------------------------------------------------------------------------
+%% The simplebnf package --- A simple package to format Backus-Naur form
+%% Maintained by Jay Lee
+%% E-mail: jaeho.lee@snu.ac.kr
+%% Released under the MIT License.
+%% ---------------------------------------------------------------------------
+%%
+\RequirePackage{expl3,xparse}
+% mathtools is needed for the \Coloneqq simbol
+\RequirePackage{mathtools}
+\ProvidesExplPackage
+  {simplebnf}
+  {2022/05/08}
+  {0.3.1}
+  {A simple package to format Backus–Naur form}
+
+\cs_generate_variant:Nn \regex_split:nnNTF {nVNTF}
+\cs_generate_variant:Nn \regex_split:NnN {NVN}
+
+\NewDocumentCommand\SimpleBNFDefEq{}{\ensuremath{⩴}}
+
+\NewDocumentCommand\SimpleBNFDefOr{}{\ensuremath{|}}
+
+\seq_new:N \l__input_seq
+\seq_new:N \l__term_seq
+\tl_new:N \l__term_tl
+\tl_new:N \l__keypairs_tl
+\tl_new:N \l__table_tl
+\seq_new:N \l__keypairs_seq
+\bool_new:N \l__first_rhs
+
+\regex_new:N \g_simplebnf_rhs_newline_r
+\regex_new:N \g_simplebnf_rhs_nb_r
+
+%% Typeset a single rhs of a production.
+%% \l__first_rhs = true  => `::=' already typeset
+%% \l__first_rhs = false => move to a newline and typeset `|'
+%% #1 - rhs : annot or rhs
+\cs_new:Nn \simplebnf_typeset_rhs:n
+{
+  \bool_if:NTF \l__first_rhs
+    {
+      \bool_set_false:N \l__first_rhs
+    }
+    {
+      \tl_put_right:Nn \l__table_tl { \\ && \SimpleBNFDefOr & }
+    }
+
+  \tl_set:Nn \l_tmpa_tl { #1 }
+  \regex_replace_once:nnN { ^\s+ } {} \l_tmpa_tl
+  \regex_replace_once:nnN { \s+$ } {} \l_tmpa_tl
+  \regex_split:nVNTF { : } \l_tmpa_tl \l_tmpa_seq
+    {
+      \seq_pop_left:NNT \l_tmpa_seq \l_tmpa_tl
+        {
+          \regex_replace_all:NnN \g_simplebnf_rhs_nb_r { \c{SimpleBNFDefOr} } \l_tmpa_tl
+          % Expand only the local temporary variable.
+          \tl_put_right:No \l__table_tl
+             {
+               \exp_after:wN\bnfexpr\exp_after:wN{\l_tmpa_tl} &
+             }
+        }
+
+      \seq_pop_left:NNT \l_tmpa_seq \l_tmpb_tl
+        {
+          \regex_replace_once:nnN { ^\s+ } {} \l_tmpb_tl
+          \tl_put_right:No \l__table_tl
+            {
+              \exp_after:wN\bnfannot\exp_after:wN{\l_tmpb_tl}
+            }
+        }
+    }
+    {
+      \regex_replace_all:NnN \g_simplebnf_rhs_nb_r { \c{SimpleBNFDefOr} } \l_tmpa_tl
+
+      \tl_put_right:No \l__table_tl
+         {
+           \exp_after:wN\bnfexpr\exp_after:wN{\l_tmpa_tl}
+         }
+    }
+}
+
+%% Typeset a single lhs of a production.
+%% #1 - lhs : either term or (term : annotation)
+\cs_new:Nn \simplebnf_typeset_lhs:n
+{
+  \tl_set:Nx \l_tmpa_tl { #1 }
+  \regex_replace_once:nnN { ^\s+ } {} \l_tmpa_tl
+  \regex_replace_once:nnN { \s+$ } {} \l_tmpa_tl
+
+  \regex_split:nVNTF { : } \l_tmpa_tl \l_tmpa_seq
+    {
+      \seq_pop_right:NN \l_tmpa_seq \l_tmpa_tl
+      \regex_replace_once:nnN { ^\s+ } {} \l_tmpa_tl
+      \tl_put_right:No \l__table_tl
+        {
+          \exp_after:wN\bnfannot\exp_after:wN{\l_tmpa_tl} &
+        }
+      \seq_pop_left:NN \l_tmpa_seq \l_tmpa_tl
+      \tl_put_right:No \l__table_tl
+        {
+          \exp_after:wN\bnfexpr\exp_after:wN{\l_tmpa_tl}
+        }
+    }
+    {
+      \tl_put_right:No \l__table_tl
+        {
+          \exp_after:wN&\exp_after:wN\bnfexpr\exp_after:wN{\l_tmpa_tl}
+        }
+    }
+}
+
+\NewDocumentCommand \bnfexpr { m } { \texttt { #1 } }
+\NewDocumentCommand \bnfannot { m } { \textit{ #1 } }
+
+%% Typeset a BNF grammar.
+%% #1 - tabular specification (llcll)
+%% #2 - regexp for newline separator for rhses
+%% #2 - regexp for non-breaking separator for rhses
+%% #3 - grammar
+\NewDocumentEnvironment { bnfgrammar } { O{llcll} O{[^\|]\|[^\|]} O{\|\|} +b }
+  {
+    \regex_gset:Nn \g_simplebnf_rhs_newline_r { #2 }
+    \regex_gset:Nn \g_simplebnf_rhs_nb_r { #3 }
+
+    %% \l__input_seq is a list of term definitions.
+    \regex_split:nnN { ;; } { #4 } \l__input_seq
+    \begin{center}
+      \tl_set:Nn \l__table_tl
+        {
+          \begin{tabular}{#1}
+        }
+
+    \bool_set_true:N \l_tmp_first_term % Is this the first term in this grammar?
+    \seq_map_inline:Nn \l__input_seq
+      {
+        %% If not-first, add newline
+        \bool_if:NTF \l_tmp_first_term
+          {
+            \bool_set_false:N \l_tmp_first_term
+          }
+          {
+            \tl_put_right:Nn \l__table_tl { \\ }
+          }
+
+        \regex_split:nnNTF { ::= } { ##1 } \l__term_seq
+          % Parse a ::= definition
+          {
+            %% \l__term_seq    - (lhs, rhses)...
+            %% \l__term_tl     - lhs
+            %% \l__keypairs_tl - rhses
+            \seq_pop_left:NN \l__term_seq \l__term_tl
+            \seq_pop_left:NN \l__term_seq \l__keypairs_tl
+
+            \simplebnf_typeset_lhs:n{\l__term_tl}
+            \tl_put_right:Nn \l__table_tl
+              {
+                & \SimpleBNFDefEq &
+              }
+            %% \l__keypairs_seq - (rhs:annot | rhs)...
+            \regex_split:NVN \g_simplebnf_rhs_newline_r \l__keypairs_tl \l__keypairs_seq
+
+            \bool_set_true:N \l__first_rhs
+            \seq_map_function:NN \l__keypairs_seq \simplebnf_typeset_rhs:n
+          }
+          {
+            % Else, parse a \in declaration
+            \regex_split:nnNTF { \c{in} } { ##1 } \l__term_seq
+              {
+                %% \l__term_seq - (lhs, rhs)
+                \seq_pop_left:NN \l__term_seq \l_tmpa_tl
+
+                \simplebnf_typeset_lhs:n{\l_tmpa_tl}
+                \tl_put_right:Nn \l__table_tl
+                  {
+                    & $\in$ & $
+                  }
+                \seq_pop_left:NN \l__term_seq \l_tmpa_tl
+                \tl_put_right:NV \l__table_tl \l_tmpa_tl
+                \tl_put_right:Nn \l__table_tl
+                  {
+                    $ &
+                  }
+              }
+              { \msg_error:nn {simplebnf} { Could not parser ##1 } }
+          }
+      }
+
+    \tl_put_right:Nn \l__table_tl { \end{tabular} }
+    \tl_use:N \l__table_tl
+    \end{center}
+  }
+  { }
+
+%% The MIT License (MIT)
+%%
+%% Copyright © 2019-2020 Jay Lee <jaeho.lee@snu.ac.kr>
+%%
+%% Permission is hereby granted, free of charge, to any person obtaining
+%% a copy of this software and associated documentation files (the "Software"),
+%% to deal in the Software without restriction, including without limitation
+%% the rights to use, copy, modify, merge, publish, distribute, sublicense,
+%% and/or sell copies of the Software, and to permit persons to whom the
+%% Software is furnished to do so, subject to the following conditions:
+%%
+%% The above copyright notice and this permission notice shall be included
+%% in all copies or substantial portions of the Software.
+%%
+%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+%% EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+%% OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+%% IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+%% DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+%% TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
+%% OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+%%
+%% End of file `simplebnf.sty'.

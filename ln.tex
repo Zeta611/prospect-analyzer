@@ -1,72 +1,169 @@
 % !TEX program = xelatex
 \documentclass[a4paper]{article}
 
-\usepackage{simplebnf}
+\usepackage{amssymb,amsmath} % Before unicode-math
+\usepackage{unicode-math}
 
-\title{L$n$}
-\author{Jay}
+\usepackage{fontspec}
+% EB Garamond is a free font: http://www.georgduffner.at/ebgaramond/
+\newfontfamily{\fallbackfont}{EB Garamond}
+\DeclareTextFontCommand{\textfallback}{\fallbackfont}
+\usepackage{newunicodechar}
+\newunicodechar{⩴}{\textfallback{⩴}}
+
+\usepackage{simplebnf}
+\RenewDocumentCommand\SimpleBNFDefEq{}{\ensuremath{⩴}}
+
+\usepackage{bussproofs}
+
+\newcommand*{\hol}{\ensuremath{\square}}
+\newcommand*{\lang}[1]{L$#1 + \hol$}
+\newcommand*{\mycolon}{:}
+\newcommand*{\pair}[2]{\langle#1,#2\rangle}
+\newcommand*{\finto}{\xrightarrow{\text{fin}}}
+
+\title{Prospect Analysis of \lang{n}}
+\author{Jay Lee}
 
 \begin{document}
 \maketitle
 
-\section*{L0: number, branch}
-\begin{bnfgrammar}
-  e ::=
-    n
-  | x
-  | e + e
-  | -e
-  | if e e e
-  | let x e e
+\section*{\lang{\mathbf{0}}}
+\begin{bnfgrammar}[llclr]
+  $e$ ::= \hol : hole
+       | $n$ : integer
+       | $x$ : variable
+       | $e$ + $e$ : addition
+       | -$e$ : negation
+       | if $e$ $e$ $e$ : conditional
+       | let $x$ $e$ $e$ : let binding
 \end{bnfgrammar}
 
-\section*{L1: number, pair, branch}
-\begin{bnfgrammar}
-  e ::=
-    n
-  | x
-  | (e, e)
-  | e.1
-  | e.2
-  | e + e
-  | -e
-  | case x (y, z) e e
-  | if e e e
-  | let x e e
+\section*{\lang{\mathbf{1}}}
+\begin{bnfgrammar}[llclr]
+  $e$ ::= \hol : hole
+       | $n$ : integer
+       | $x$ : variable
+       | ($e$, $e$) : pair
+       | $e$.1 : first projection
+       | $e$.2 : second projection
+       | $e$ + $e$ : addition
+       | -$e$ : negation
+       | case $x$ ($y$, $z$) $e$ $e$ : match
+       | if $e$ $e$ $e$ : conditional
+       | let $x$ $e$ $e$ : let binding
 \end{bnfgrammar}
 
-\section*{L2: number, pair, branch, loop}
-\begin{bnfgrammar}
-  e ::=
-    n
-  | x
-  | (e, e)
-  | e.1
-  | e.2
-  | e + e
-  | -e
-  | case x (y, z) e e
-  | if e e e
-  | let x e e
-  | repeat f x e e : let f(x) = e in f(e)
-  | f e
+\subsection*{Shape Analysis}
+\begin{bnfgrammar}[rccll]
+  $\Gamma$ : Contexts \in \textit{Id} \finto \textit{Types} \times \textit{Paths}
+  ;;
+  $\Gamma$ ::= $\varnothing$ || $\Gamma + x\!\mycolon\!\pair{\tau}{p}$
+  ;;
+  $\tau$ : Types ::= $\iota$ || $\tau * \tau$
+  ;;
+  $p$ : Paths ::= $\cdot$
+  | PPair($p$,$p$)
+  | PAdd($p$,$p$)
+  | PCaseP($p$,$p$)
+  | PCaseN($p$,$p$)
+  | PIfTru($p$,$p$)
+  | PIfFls($p$,$p$)
+  | PLet($p$,$p$)
+\end{bnfgrammar}
+\vskip\baselineskip
+
+\begin{prooftree}
+  \AxiomC{}
+  \UnaryInfC{$\Gamma \vdash \hol : \pair{\tau}{\cdot}$}
+\end{prooftree}
+\begin{prooftree}
+  \AxiomC{}
+  \UnaryInfC{$\Gamma \vdash n : \pair{\iota}{\cdot}$}
+\end{prooftree}
+\begin{prooftree}
+  \AxiomC{$\Gamma \vdash e_1 : \pair{\tau_1}{p_1}$}
+  \AxiomC{$\Gamma \vdash e_2 : \pair{\tau_2}{p_2}$}
+  \BinaryInfC{$\Gamma \vdash \texttt{($e_1$, $e_2$)} : \pair{\tau_1 * \tau_2}{\texttt{PPair($p_1$,$p_2$)}}$}
+\end{prooftree}
+\begin{prooftree}
+  \AxiomC{$\Gamma \vdash e : \pair{\tau_1 * \tau_2}{p}$}
+  \UnaryInfC{$\Gamma \vdash e\texttt{.1} : \pair{\tau_1}{p}$}
+\end{prooftree}
+\begin{prooftree}
+  \AxiomC{$\Gamma \vdash e : \pair{\tau_1 * \tau_2}{p}$}
+  \UnaryInfC{$\Gamma \vdash e\texttt{.2} : \pair{\tau_2}{p}$}
+\end{prooftree}
+\begin{prooftree}
+  \AxiomC{$\Gamma \vdash e_1 : \pair{\iota}{p_1}$}
+  \AxiomC{$\Gamma \vdash e_2 : \pair{\iota}{p_2}$}
+  \BinaryInfC{$\Gamma \vdash \texttt{$e_1$ + $e_2$} : \pair{\iota}{\texttt{PAdd($p_1$,$p_2$)}}$}
+\end{prooftree}
+\begin{prooftree}
+  \AxiomC{$\Gamma \vdash e : \pair{\iota}{p}$}
+  \UnaryInfC{$\Gamma \vdash \texttt{-$e$} : \pair{\iota}{p}$}
+\end{prooftree}
+Assume \verb/x/ in a \verb/case/ clause is an expression; otherwise, simply set its path to $\cdot$.
+\begin{prooftree}
+  \AxiomC{$\Gamma \vdash x: \pair{\tau_y * \tau_z}{p_x}$}
+  \AxiomC{$\Gamma + y: \tau_y + z: \tau_z \vdash e_1 : \pair{\tau_1}{p_1}$}
+  \BinaryInfC{$\Gamma \vdash \texttt{\text{case $x$ ($y$, $z$) $e_1$ $e_2$}} : \pair{\tau_1}{\texttt{PCaseP($p_x$,$p_1$)}}$}
+\end{prooftree}
+\begin{prooftree}
+  \AxiomC{$\Gamma \vdash x: \pair{\iota}{p_x}$}
+  \AxiomC{$\Gamma \vdash e_2 : \pair{\tau_2}{p_2}$}
+  \BinaryInfC{$\Gamma \vdash \texttt{\text{case $x$ ($y$, $z$) $e_1$ $e_2$}} : \pair{\tau_2}{\texttt{PCaseN($p_x$, $p_2$)}}$}
+\end{prooftree}
+\begin{prooftree}
+  \AxiomC{$\Gamma \vdash e_P : \pair{\iota}{p_P}$}
+  \AxiomC{$\Gamma \vdash e_T : \pair{\tau_T}{p_T}$}
+  \RightLabel{$e \ne 0$}
+  \BinaryInfC{$\Gamma \vdash \texttt{\text{if $e_P$ $e_T$ $e_F$}} : \pair{\tau_T}{\texttt{PIfTru($p_P$, $p_T$)}}$}
+\end{prooftree}
+\begin{prooftree}
+  \AxiomC{$\Gamma \vdash e_P : \pair{\iota}{p_P}$}
+  \AxiomC{$\Gamma \vdash e_F : \pair{\tau_F}{p_F}$}
+  \RightLabel{$e = 0$}
+  \BinaryInfC{$\Gamma \vdash \texttt{\text{if $e_P$ $e_T$ $e_F$}} : \pair{\tau_F}{\texttt{PIfFls($p_P$, $p_F$)}}$}
+\end{prooftree}
+\begin{prooftree}
+  \AxiomC{$\Gamma \vdash e_x : \pair{\tau_x}{p_x}$}
+  \AxiomC{$\Gamma + x: \tau_x \vdash e_B : \pair{\tau_B}{p_B}$}
+  \BinaryInfC{$\Gamma \vdash \texttt{\text{let $x$ $e_x$ $e_B$}} : \pair{\tau_B}{\texttt{PLet($p_x$,$p_B$)}}$}
+\end{prooftree}
+
+\section*{\lang{\mathbf{2}}}
+\begin{bnfgrammar}[llclr]
+  $e$ ::= \hol : hole
+       | $n$ : integer
+       | $x$ : variable
+       | ($e$, $e$) : pair
+       | $e$.1 : first projection
+       | $e$.2 : second projection
+       | $e$ + $e$ : addition
+       | -$e$ : negation
+       | case $x$ ($y$, $z$) $e$ $e$ : match
+       | if $e$ $e$ $e$ : conditional
+       | let $x$ $e$ $e$ : let binding
+       | repeat $f$ $x$ $e$ $e$ : let f(x) = e in f(e)
+       | $f$ $e$ : application
 \end{bnfgrammar}
 
-\section*{L3: number, pair, branch, function}
-\begin{bnfgrammar}
-  e ::=
-    n
-  | x
-  | (e, e)
-  | e.1
-  | e.2
-  | e + e
-  | -e
-  | case x (y, z) e e
-  | if e e e
-  | let x e e
-  | $\lambda$x.e
-  | rec f $\lambda$x.e
-  | e e
+\section*{\lang{\mathbf{3}}}
+\begin{bnfgrammar}[llclr]
+  $e$ ::= \hol : hole
+       | $n$ : integer
+       | $x$ : variable
+       | ($e$, $e$) : pair
+       | $e$.1 : first projection
+       | $e$.2 : second projection
+       | $e$ + $e$ : addition
+       | -$e$ : negation
+       | case $x$ ($y$, $z$) $e$ $e$ : match
+       | if $e$ $e$ $e$ : conditional
+       | let $x$ $e$ $e$ : let binding
+       | $\lambda x$.$e$ : abstraction
+       | rec $f$ $\lambda x$.$e$ : recursion
+       | $f$ $e$ : application
 \end{bnfgrammar}
 \end{document}
