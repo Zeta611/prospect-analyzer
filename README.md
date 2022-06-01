@@ -1,4 +1,6 @@
 # Ln
+See the [documentation](ln.pdf) for syntax and semantics.
+
 ## Usage
 To run, execute
 ```sh
@@ -8,14 +10,14 @@ after `make`.
 
 ## Sample code
 ```
-# lang 0
+# lang 1
 # 1 1
-# 2 0
-# 3 3
-let v (x, 3) case v (y, z) if v.1 y v.2 0
+let v (x, 3) case [] (y, z) if v.1 y v.2 0
 ```
 should output
 ```
-Interpreter version: L0
-Input 2 should output 0, but got 2
+Type checker version: L1
+| []: (ι, τ6), O: ι
+| []: (τ5, τ6), O: ι
+| []: ι, O: ι
 ```
