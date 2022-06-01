@@ -1,15 +1,15 @@
 (* Types and exceptions *)
-type value = Hole | Num of number | Pair of value * value
+type value =
+  | Hole
+  | Num of number
+  | Pair of value * value
 
 and number = int
-
 and env = id -> value
-
 and id = string
 
 type comp_op =
-  | Eq
-  (* =0 *)
+  | Eq (* =0 *)
   | Ne (* ≠0 *)
 
 (* | Lt (* <0 *) *)
@@ -17,13 +17,10 @@ type comp_op =
 (* | Le (* ≤0 *) *)
 (* | Ge (* ≥0 *) *)
 and ih_coeffs = int list
-
 and cond_eqn = ih_coeffs * comp_op
 
 exception TypeError of string
-
 exception RunError of string
-
 exception VersionError of string
 
 let rec expr_to_string = function
@@ -66,12 +63,12 @@ let rec eval env expr =
       let pair = eval env e in
       match pair with
       | Pair (fst, _) -> fst
-      | _ -> raise (TypeError "FIRST: not a pair") )
+      | _ -> raise (TypeError "FIRST: not a pair"))
   | L.Snd e -> (
       let pair = eval env e in
       match pair with
       | Pair (_, snd) -> snd
-      | _ -> raise (TypeError "SECOND: not a pair") )
+      | _ -> raise (TypeError "SECOND: not a pair"))
   | L.Add (e1, e2) -> (
       let lhs = eval env e1 in
       match lhs with
@@ -79,25 +76,25 @@ let rec eval env expr =
           let rhs = eval env e2 in
           match rhs with
           | Num rhs_n -> Num (lhs_n + rhs_n)
-          | _ -> raise (TypeError "ADD: lhs not a number") )
-      | _ -> raise (TypeError "ADD: rhs not a number") )
+          | _ -> raise (TypeError "ADD: lhs not a number"))
+      | _ -> raise (TypeError "ADD: rhs not a number"))
   | L.Neg e -> (
       let num = eval env e in
       match num with
       | Num n -> Num (-n)
-      | _ -> raise (TypeError "NEGATE: not a number") )
+      | _ -> raise (TypeError "NEGATE: not a number"))
   | L.Case (x, y, z, e1, e2) -> (
       let v = eval env x in
       match v with
       | Pair (v1, v2) ->
           let env' = env ++ (y, v1) ++ (z, v2) in
           eval env' e1
-      | _ -> eval env e2 )
+      | _ -> eval env e2)
   | L.If (pred, true_e, false_e) -> (
       let v = eval env pred in
       match v with
       | Num n -> eval env (if n <> 0 then true_e else false_e)
-      | _ -> raise (TypeError "IF: pred not a number") )
+      | _ -> raise (TypeError "IF: pred not a number"))
   | L.Let (x, exp, body) ->
       let v = eval env exp in
       eval (env ++ (x, v)) body
@@ -112,13 +109,15 @@ let main () =
 type ty =
   | TyInt
   | TyPair of ty * ty
-  | TyHole
-  (* of hvtype? *)
+  | TyHole (* of hvtype? *)
   | TyVar of tyvar
 
 and tyvar = string
 
-and hvty = HVRoot | HVLeft of hvty | HVRight of hvty
+and hvty =
+  | HVRoot
+  | HVLeft of hvty
+  | HVRight of hvty
 
 and ty_env = (id * ty) list
 
@@ -140,8 +139,6 @@ let new_var () =
 let lookup (x : id) (env : ty_env) : ty =
   try List.assoc x env
   with Not_found -> raise (TypeError "Unbound type variable")
-
-let bind_type (x : id) (t : ty) (env : ty_env) : ty_env = (x, t) :: env
 
 (* substitution *)
 type substitution = ty -> ty
@@ -170,7 +167,7 @@ let rec tyvars_in_type (t : ty) : tyvar list =
   match t with
   | TyInt -> []
   | TyPair (t1, t2) -> union (tyvars_in_type t1) (tyvars_in_type t2)
-  | TyVar tyvar -> [tyvar]
+  | TyVar tyvar -> [ tyvar ]
   | TyHole -> [] (* TODO *)
 
 let ( @* ) (subs' : substitution) (subs : substitution) : substitution =
@@ -229,11 +226,11 @@ let rec infer (env : ty_env) (e : L.expr) (t : ty) : substitution list =
   match e with
   | L.Hole ->
       let h_t = TyVar "τ" in
-      [unify t h_t]
-  | L.Num n -> [unify t TyInt]
+      [ unify t h_t ]
+  | L.Num n -> [ unify t TyInt ]
   | L.Var x ->
       let x_t = lookup x env in
-      [unify t x_t]
+      [ unify t x_t ]
   | L.Pair (e1, e2) ->
       let t1 = TyVar (new_var ()) in
       let t2 = TyVar (new_var ()) in
@@ -257,7 +254,7 @@ let rec infer (env : ty_env) (e : L.expr) (t : ty) : substitution list =
           let ly_t' = List.map (fun s -> s y_t) ls in
           let lz_t' = List.map (fun s -> s z_t) ls in
           let gen_s' env' y_t' z_t' s =
-            infer (bind_type y y_t' (bind_type z z_t' env')) e1 (s t)
+            infer ((y, y_t') :: (z, z_t') :: env') e1 (s t)
           in
           let lls' = map4 gen_s' lenv' ly_t' lz_t' ls in
           let lls's =
@@ -300,7 +297,7 @@ let rec infer (env : ty_env) (e : L.expr) (t : ty) : substitution list =
       let ls = infer env v x_t in
       let lenv' = List.map (fun s -> subst_env s env) ls in
       let lx_t' = List.map (fun s -> s x_t) ls in
-      let gen_s' env' x_t' s = infer (bind_type x x_t' env') e (s t) in
+      let gen_s' env' x_t' s = infer ((x, x_t') :: env') e (s t) in
       let lls' = map3 gen_s' lenv' lx_t' ls in
       let lls's =
         List.map2 (fun s ls' -> List.map (fun s' -> s' @* s) ls') ls lls'
@@ -323,29 +320,31 @@ let converted_samples =
 (* Process version *)
 (* let _ = print_string "Interpreter version: L" *)
 let _ = print_string "Type checker version: L"
-
 let _ = print_int version
-
 let _ = print_newline ()
 
 let rec check_version version expr =
   match version with
   | 0 -> (
-    match expr with
-    | L.Pair _ -> raise (VersionError "PAIR: not supported")
-    | L.Fst _ -> raise (VersionError "FIRST: not supported")
-    | L.Snd _ -> raise (VersionError "SECOND: not supported")
-    | L.Case _ -> raise (VersionError "CASE: not supported")
-    | L.Add (e1, e2) -> check_version version e1 ; check_version version e2
-    | L.Neg e -> check_version version e
-    | L.If (e_p, e_t, e_f) ->
-        check_version version e_p ;
-        check_version version e_t ;
-        check_version version e_f
-    | L.Let (x, v, e) -> check_version version v ; check_version version e
-    | L.Hole -> ()
-    | L.Num _ -> ()
-    | L.Var _ -> () )
+      match expr with
+      | L.Pair _ -> raise (VersionError "PAIR: not supported")
+      | L.Fst _ -> raise (VersionError "FIRST: not supported")
+      | L.Snd _ -> raise (VersionError "SECOND: not supported")
+      | L.Case _ -> raise (VersionError "CASE: not supported")
+      | L.Add (e1, e2) ->
+          check_version version e1;
+          check_version version e2
+      | L.Neg e -> check_version version e
+      | L.If (e_p, e_t, e_f) ->
+          check_version version e_p;
+          check_version version e_t;
+          check_version version e_f
+      | L.Let (x, v, e) ->
+          check_version version v;
+          check_version version e
+      | L.Hole -> ()
+      | L.Num _ -> ()
+      | L.Var _ -> ())
   | 1 -> ()
   | _ -> raise (VersionError "Version not supported")
 
@@ -366,12 +365,12 @@ let out_types =
     (fun (i, t) -> type_check (L.Let ("x", i, root_expr)) t)
     (List.map
        (fun p -> (val_to_expr @@ fst @@ p, val_to_type @@ snd @@ p))
-       converted_samples )
+       converted_samples)
 
 let rec print_type_list (types : (ty * ty) list) : unit =
   match types with
   | (ht, ot) :: ps ->
-      print_endline ("| []: " ^ type_to_string ht ^ ", O: " ^ type_to_string ot) ;
+      print_endline ("| []: " ^ type_to_string ht ^ ", O: " ^ type_to_string ot);
       print_type_list ps
   | [] -> print_newline ()
 
