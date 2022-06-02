@@ -119,7 +119,18 @@ and hvty =
   | HVLeft of hvty
   | HVRight of hvty
 
-and ty_env = (id * ty) list
+(* Taken path that should accompany a ty *)
+and path =
+  | PtNil
+  | PtPair of path * path
+  | PtAdd of path * path
+  | PtCaseP of path * path
+  | PtCaseN of path * path
+  | PtIfTru of path * path
+  | PtIfFls of path * path
+  | PtLet of path * path
+
+and tp_env = (id * (ty * path)) list
 
 exception UnificationError
 
@@ -129,6 +140,21 @@ let rec type_to_string = function
   | TyHole -> "[]"
   | TyVar tv -> tv
 
+let rec path_to_string = function
+  | PtNil -> "."
+  | PtPair (p1, p2) -> "(" ^ path_to_string p1 ^ ", " ^ path_to_string p2 ^ ")"
+  | PtAdd (p1, p2) -> path_to_string p1 ^ " + " ^ path_to_string p2
+  | PtCaseP (p1, p2) ->
+      "case (" ^ path_to_string p1 ^ ") : * " ^ path_to_string p2
+  | PtCaseN (p1, p2) ->
+      "case (" ^ path_to_string p1 ^ ") : ι " ^ path_to_string p2
+  | PtIfTru (p1, p2) ->
+      "if (" ^ path_to_string p1 ^ ") ≠ 0 " ^ path_to_string p2
+  | PtIfFls (p1, p2) ->
+      "if (" ^ path_to_string p1 ^ ") = 0 " ^ path_to_string p2
+  | PtLet (p1, p2) ->
+      "let . = (" ^ path_to_string p1 ^ ") in (" ^ path_to_string p2 ^ ")"
+
 let var_count = ref 0
 
 let new_var () =
@@ -136,7 +162,7 @@ let new_var () =
   "τ" ^ string_of_int !var_count
 
 (* type env *)
-let lookup (x : id) (env : ty_env) : ty =
+let lookup (x : id) (env : tp_env) : ty * path =
   try List.assoc x env
   with Not_found -> raise (TypeError "Unbound type variable")
 
@@ -154,8 +180,8 @@ let apply_subst (old_type : ty) (new_type : ty) : substitution =
   in
   subs
 
-let subst_env (subs : substitution) (env : ty_env) : ty_env =
-  List.map (fun (x, t) -> (x, subs t)) env
+let subst_env (subs : substitution) (env : tp_env) : tp_env =
+  List.map (fun (x, (t, p)) -> (x, (subs t, p))) env
 
 let rec tyvars_in_type (t : ty) : tyvar list =
   let rec union (tyvars1 : tyvar list) (tyvars2 : tyvar list) : tyvar list =
@@ -196,128 +222,160 @@ let map4 (f : 'a -> 'b -> 'c -> 'd -> 'e) (la : 'a list) (lb : 'b list)
     (lc : 'c list) (ld : 'd list) : 'e list =
   List.map2 (fun f d -> f d) (map3 f la lb lc) ld
 
-(* Taken path that should accompany a substitutions *)
-type path =
-  | PNil
-  | PPair of path * path
-  | PPAdd of path * path
-  | PCaseP of path * path
-  | PCaseN of path * path
-  | PIfTru of path * path
-  | PLet of path * path
-
-(* Modified M algorithm *)
-let rec infer (env : ty_env) (e : L.expr) (t : ty) : substitution list =
+(** Modified M algorithm *)
+let rec infer (env : tp_env) (e : L.expr) (t : ty) : (substitution * path) list
+    =
   (* let _ = print_endline ("M (Gamma, " ^ expr_to_string e ^ ", " ^
      type_to_string t ^ ")") in *)
+
   (* Generate a list of s''s's from a non-branching expression with two
      subexpressions *)
   let gen_s''s's (t' : ty) (e1 : L.expr) (e2 : L.expr) (t1 : ty) (t2 : ty) :
-      substitution list =
+      (substitution * (path * path)) list =
     let s = unify t t' in
+
+    (* ls' = [s1', p1; s2', p1; ...; sn', p1] *)
     let ls' = infer (subst_env s env) e1 (s t1) in
-    (* ls' = [s1'; s2'; ...; sn'] *)
-    let gen_s'' s' =
+
+    let gen_s'' (s', p1) =
       (* use each s' and combine with s to generate a new list of s'' *)
       infer (subst_env (s' @* s) env) e2 ((s' @* s) t2)
+      |> List.map (fun (s, p2) -> (s, (p1, p2)))
     in
+
+    (* lls'' = [[s11'', (p1, p2); ...]; ...; [s1n'', (p1, p2); ...]] *)
     let lls'' = List.map gen_s'' ls' in
-    (* lls'' = [[s11''; ...]; ...; [s1n''; ...]] *)
+
     let lls''s' =
       List.map2 (* possibly better to use tail-recursive rev_map2 *)
-        (fun s' ls'' -> List.map (fun s'' -> s'' @* s') ls'')
+        (fun (s', _) ls'' -> List.map (fun (s'', pp) -> (s'' @* s', pp)) ls'')
         ls' lls''
     in
-    (* lls''s' = [[s11'' s1'; ...]; ...; [s1n'' sn'; ...]] *)
+    (* lls''s' = [[s11'' s1', (p1, p2); ...]; ...; [s1n'' sn', (p1, p2);
+       ...]] *)
     let ls''s' = List.flatten lls''s' in
-    let ls''s's = List.map (fun s''s' -> s''s' @* s) ls''s' in
+    let ls''s's = List.map (fun (s''s', pp) -> (s''s' @* s, pp)) ls''s' in
     ls''s's
   in
   try
     match e with
     | L.Hole ->
         let h_t = TyVar "τ" in
-        [ unify t h_t ]
-    | L.Num n -> [ unify t TyInt ]
+        [ (unify t h_t, PtNil) ]
+    | L.Num n -> [ (unify t TyInt, PtNil) ]
     | L.Var x ->
-        let x_t = lookup x env in
-        [ unify t x_t ]
+        let x_t, x_p = lookup x env in
+        (* [ (unify t x_t, x_p) ] *)
+        [ (unify t x_t, PtNil) ]
     | L.Pair (e1, e2) ->
         let t1 = TyVar (new_var ()) in
         let t2 = TyVar (new_var ()) in
-        gen_s''s's (TyPair (t1, t2)) e1 e2 t1 t2
+        List.map
+          (fun (s, (p1, p2)) -> (s, PtPair (p1, p2)))
+          (gen_s''s's (TyPair (t1, t2)) e1 e2 t1 t2)
     | L.Fst e -> infer env e (TyPair (t, TyVar (new_var ())))
     | L.Snd e -> infer env e (TyPair (TyVar (new_var ()), t))
-    | L.Add (e1, e2) -> gen_s''s's TyInt e1 e2 TyInt TyInt
+    | L.Add (e1, e2) ->
+        List.map
+          (fun (s, (p1, p2)) -> (s, PtAdd (p1, p2)))
+          (gen_s''s's TyInt e1 e2 TyInt TyInt)
     | L.Neg e ->
         let s = unify t TyInt in
         let ls' = infer (subst_env s env) e (s TyInt) in
-        let ls's = List.map (fun s' -> s' @* s) ls' in
+        (* TODO: (s TyInt) -> TyInt *)
+        let ls's = List.map (fun (s', p) -> (s' @* s, p)) ls' in
         ls's
     | L.Case (x, y, z, e1, e2) ->
         (* x binds to (y, z) *)
         let ls's_bind =
           let y_t = TyVar (new_var ()) in
           let z_t = TyVar (new_var ()) in
+
           let ls = infer env x (TyPair (y_t, z_t)) in
-          let lenv' = List.map (fun s -> subst_env s env) ls in
-          let ly_t' = List.map (fun s -> s y_t) ls in
-          let lz_t' = List.map (fun s -> s z_t) ls in
-          let gen_s' env' y_t' z_t' s =
+          let lenv' = List.map (fun (s, _) -> subst_env s env) ls in
+          let ly_t' = List.map (fun (s, _) -> (s y_t, PtNil)) ls in
+          let lz_t' = List.map (fun (s, _) -> (s z_t, PtNil)) ls in
+
+          let gen_s' env' y_t' z_t' (s, _) =
             infer ((y, y_t') :: (z, z_t') :: env') e1 (s t)
           in
           let lls' = map4 gen_s' lenv' ly_t' lz_t' ls in
           let lls's =
-            List.map2 (fun s ls' -> List.map (fun s' -> s' @* s) ls') ls lls'
+            List.map2
+              (fun (s, x_p) ls' ->
+                List.map (fun (s', e1_p) -> (s' @* s, PtCaseP (x_p, e1_p))) ls')
+              ls lls'
           in
           let ls's = List.flatten lls's in
           ls's
         in
+
         (* x is TyInt *)
         let ls's_nbind =
           let ls = infer env x TyInt in
-          let lenv' = List.map (fun s -> subst_env s env) ls in
-          let gen_s' env' s = infer env' e2 (s t) in
+          let lenv' = List.map (fun (s, _) -> subst_env s env) ls in
+
+          let gen_s' env' (s, _) = infer env' e2 (s t) in
           let lls' = List.map2 gen_s' lenv' ls in
           let lls's =
-            List.map2 (fun s ls' -> List.map (fun s' -> s' @* s) ls') ls lls'
+            List.map2
+              (fun (s, x_p) ls' ->
+                List.map (fun (s', e2_p) -> (s' @* s, PtCaseN (x_p, e2_p))) ls')
+              ls lls'
           in
           let ls's = List.flatten lls's in
           ls's
         in
+
         ls's_bind @ ls's_nbind
     | L.If (e_p, e_t, e_f) ->
         let ls = infer env e_p TyInt in
-        let gen_ls's e =
-          let lls' = List.map (fun s -> infer (subst_env s env) e (s t)) ls in
+
+        let gen_ls's e_tf choice =
+          let lls' =
+            List.map (fun (s, _) -> infer (subst_env s env) e_tf (s t)) ls
+          in
           let lls's =
-            List.map2 (fun s ls' -> List.map (fun s' -> s' @* s) ls') ls lls'
+            List.map2
+              (fun (s, e_p_p) ls' ->
+                List.map
+                  (fun (s', e_tf_p) ->
+                    ( s' @* s,
+                      if choice then PtIfTru (e_p_p, e_tf_p)
+                      else PtIfFls (e_p_p, e_tf_p) ))
+                  ls')
+              ls lls'
           in
           let ls's = List.flatten lls's in
           ls's
         in
-        let ls's_t = gen_ls's e_t in
-        let ls's_f = gen_ls's e_f in
+        let ls's_t = gen_ls's e_t true in
+        let ls's_f = gen_ls's e_f false in
         ls's_t @ ls's_f
     | L.Let (x, v, e) ->
         let x_t = TyVar (new_var ()) in
+
         let ls = infer env v x_t in
-        let lenv' = List.map (fun s -> subst_env s env) ls in
-        let lx_t' = List.map (fun s -> s x_t) ls in
-        let gen_s' env' x_t' s = infer ((x, x_t') :: env') e (s t) in
-        let lls' = map3 gen_s' lenv' lx_t' ls in
+        let lenv' = List.map (fun (s, _) -> subst_env s env) ls in
+        let lx_tp' = List.map (fun (s, x_p) -> (s x_t, x_p)) ls in
+
+        let gen_s' env' x_tp' (s, _) = infer ((x, x_tp') :: env') e (s t) in
+        let lls' = map3 gen_s' lenv' lx_tp' ls in
         let lls's =
-          List.map2 (fun s ls' -> List.map (fun s' -> s' @* s) ls') ls lls'
+          List.map2
+            (fun (s, v_p) ls' ->
+              List.map (fun (s', e_p) -> (s' @* s, PtLet (v_p, e_p))) ls')
+            ls lls'
         in
         let ls's = List.flatten lls's in
         ls's
   with UnificationError -> []
 
 (* Returns the possible combinations of the [] and the output *)
-let type_check (e : L.expr) (t : ty) : (ty * ty) list =
+let type_check (e : L.expr) (t : ty) : (ty * ty * path) list =
   let hole_type = TyVar "τ" in
   let ls = infer [] e t in
-  List.map (fun subst -> (subst hole_type, subst t)) ls
+  List.map (fun (subst, pt) -> (subst hole_type, subst t, pt)) ls
 
 (* samples is a list of input-output pairs *)
 let version, samples, root_expr = main ()
@@ -375,10 +433,18 @@ let out_types =
        (fun p -> (val_to_expr @@ fst @@ p, val_to_type @@ snd @@ p))
        converted_samples)
 
-let rec print_type_list (types : (ty * ty) list) : unit =
-  match types with
-  | (ht, ot) :: ps ->
-      print_endline ("| []: " ^ type_to_string ht ^ ", O: " ^ type_to_string ot);
+let rec print_type_list (typts : (ty * ty * path) list) : unit =
+  match typts with
+  | (ht, ot, pt) :: ps ->
+      let pt' =
+        match pt with
+        | PtLet (_, pt') -> pt'
+        | _ -> failwith "No top-level binding for x; programming error"
+      in
+      print_endline
+        ("| []: \027[31m" ^ type_to_string ht ^ "\027[0m, O: \027[31m"
+       ^ type_to_string ot ^ "\027[0m, Trace: \027[32m" ^ path_to_string pt'
+       ^ "\027[0m");
       print_type_list ps
   | [] -> ()
 
