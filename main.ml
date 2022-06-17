@@ -131,6 +131,20 @@ and path =
   | PtLet of path * path
 
 and tp_env = (id * (ty * path)) list
+and tag = string
+
+and tagged_exp =
+  | TgHole of tag
+  | TgNum of tag * number
+  | TgVar of tag * id
+  | TgPair of tag * tagged_exp * tagged_exp
+  | TgFst of tag * tagged_exp
+  | TgSnd of tag * tagged_exp
+  | TgAdd of tag * tagged_exp * tagged_exp
+  | TgNeg of tag * tagged_exp
+  | TgCase of tag * tagged_exp * id * id * tagged_exp * tagged_exp
+  | TgIf of tag * tagged_exp * tagged_exp * tagged_exp
+  | TgLet of tag * id * tagged_exp * tagged_exp
 
 exception UnificationError
 
@@ -155,11 +169,36 @@ let rec path_to_string = function
   | PtLet (p1, p2) ->
       "let . = (" ^ path_to_string p1 ^ ") in (" ^ path_to_string p2 ^ ")"
 
+let rec tags_to_string = function
+  | [] -> ""
+  | hd :: tl -> hd ^ "->" ^ tags_to_string tl
+
 let var_count = ref 0
 
 let new_var () =
   let _ = var_count := !var_count + 1 in
   "τ" ^ string_of_int !var_count
+
+let tag_count = ref 0
+
+let new_tag () =
+  let _ = tag_count := !tag_count + 1 in
+  "ℓ" ^ string_of_int !tag_count
+
+let rec tag_exp (e : L.expr) : tagged_exp =
+  match e with
+  | Hole -> TgHole (new_tag ())
+  | Num n -> TgNum (new_tag (), n)
+  | Var id -> TgVar (new_tag (), id)
+  | Pair (e1, e2) -> TgPair (new_tag (), tag_exp e1, tag_exp e2)
+  | Fst e -> TgFst (new_tag (), tag_exp e)
+  | Snd e -> TgSnd (new_tag (), tag_exp e)
+  | Add (e1, e2) -> TgAdd (new_tag (), tag_exp e1, tag_exp e2)
+  | Neg e -> TgNeg (new_tag (), tag_exp e)
+  | Case (x, y, z, e1, e2) ->
+      TgCase (new_tag (), tag_exp x, y, z, tag_exp e1, tag_exp e2)
+  | If (e1, e2, e3) -> TgIf (new_tag (), tag_exp e1, tag_exp e2, tag_exp e3)
+  | Let (x, e1, e2) -> TgLet (new_tag (), x, tag_exp e1, tag_exp e2)
 
 (* type env *)
 let lookup (x : id) (env : tp_env) : ty * path =
@@ -223,87 +262,100 @@ let map4 (f : 'a -> 'b -> 'c -> 'd -> 'e) (la : 'a list) (lb : 'b list)
   List.map2 (fun f d -> f d) (map3 f la lb lc) ld
 
 (** Modified M algorithm *)
-let rec infer (env : tp_env) (e : L.expr) (t : ty) : (substitution * path) list
-    =
+let rec infer (env : tp_env) (e : tagged_exp) (t : ty) :
+    (substitution * path * tag list) list =
   (* let _ = print_endline ("M (Gamma, " ^ expr_to_string e ^ ", " ^
      type_to_string t ^ ")") in *)
 
   (* Generate a list of s''s's from a non-branching expression with two
      subexpressions *)
-  let gen_s''s's (t' : ty) (e1 : L.expr) (e2 : L.expr) (t1 : ty) (t2 : ty) :
-      (substitution * (path * path)) list =
+  let gen_s''s's (t' : ty) (e1 : tagged_exp) (e2 : tagged_exp) (t1 : ty)
+      (t2 : ty) : (substitution * (path * path) * tag list) list =
     let s = unify t t' in
 
-    (* ls' = [s1', p1; s2', p1; ...; sn', p1] *)
+    (* ls' = [s1', p1, tg1; s2', p1, tg1; ...; sn', p1, tg1] *)
     let ls' = infer (subst_env s env) e1 (s t1) in
 
-    let gen_s'' (s', p1) =
+    let gen_s'' (s', p1, tg1) =
       (* use each s' and combine with s to generate a new list of s'' *)
       infer (subst_env (s' @* s) env) e2 ((s' @* s) t2)
-      |> List.map (fun (s, p2) -> (s, (p1, p2)))
+      |> List.map (fun (s, p2, tg2) -> (s, (p1, p2), tg1 @ tg2))
     in
 
-    (* lls'' = [[s11'', (p1, p2); ...]; ...; [s1n'', (p1, p2); ...]] *)
+    (* lls'' = [[s11'', (p1, p2), tg1 @ tg2; ...]; ...; [s1n'', (p1, p2), tg1 @
+       tg2; ...]] *)
     let lls'' = List.map gen_s'' ls' in
 
     let lls''s' =
       List.map2 (* possibly better to use tail-recursive rev_map2 *)
-        (fun (s', _) ls'' -> List.map (fun (s'', pp) -> (s'' @* s', pp)) ls'')
+        (fun (s', _, _) ls'' ->
+          List.map (fun (s'', pp, tgl) -> (s'' @* s', pp, tgl)) ls'')
         ls' lls''
     in
-    (* lls''s' = [[s11'' s1', (p1, p2); ...]; ...; [s1n'' sn', (p1, p2);
-       ...]] *)
+    (* lls''s' = [[s11'' s1', (p1, p2), tg1 @ tg2; ...]; ...; [s1n'' sn', (p1,
+       p2), tg1 @ tg2; ...]] *)
     let ls''s' = List.flatten lls''s' in
-    let ls''s's = List.map (fun (s''s', pp) -> (s''s' @* s, pp)) ls''s' in
+    let ls''s's =
+      List.map (fun (s''s', pp, tgl) -> (s''s' @* s, pp, tgl)) ls''s'
+    in
     ls''s's
   in
   try
     match e with
-    | L.Hole ->
+    | TgHole tg ->
         let h_t = TyVar "τ" in
-        [ (unify t h_t, PtNil) ]
-    | L.Num n -> [ (unify t TyInt, PtNil) ]
-    | L.Var x ->
+        [ (unify t h_t, PtNil, [ tg ]) ]
+    | TgNum (tg, n) -> [ (unify t TyInt, PtNil, [ tg ]) ]
+    | TgVar (tg, x) ->
         let x_t, x_p = lookup x env in
         (* [ (unify t x_t, x_p) ] *)
-        [ (unify t x_t, PtNil) ]
-    | L.Pair (e1, e2) ->
+        [ (unify t x_t, PtNil, [ tg ]) ]
+    | TgPair (tg, e1, e2) ->
         let t1 = TyVar (new_var ()) in
         let t2 = TyVar (new_var ()) in
         List.map
-          (fun (s, (p1, p2)) -> (s, PtPair (p1, p2)))
+          (fun (s, (p1, p2), tgl) -> (s, PtPair (p1, p2), tg :: tgl))
           (gen_s''s's (TyPair (t1, t2)) e1 e2 t1 t2)
-    | L.Fst e -> infer env e (TyPair (t, TyVar (new_var ())))
-    | L.Snd e -> infer env e (TyPair (TyVar (new_var ()), t))
-    | L.Add (e1, e2) ->
+    | TgFst (tg, e) ->
         List.map
-          (fun (s, (p1, p2)) -> (s, PtAdd (p1, p2)))
+          (fun (s, p, tgl) -> (s, p, tg :: tgl))
+          (infer env e (TyPair (t, TyVar (new_var ()))))
+    | TgSnd (tg, e) ->
+        List.map
+          (fun (s, p, tgl) -> (s, p, tg :: tgl))
+          (infer env e (TyPair (TyVar (new_var ()), t)))
+    | TgAdd (tg, e1, e2) ->
+        List.map
+          (fun (s, (p1, p2), tgl) -> (s, PtAdd (p1, p2), tg :: tgl))
           (gen_s''s's TyInt e1 e2 TyInt TyInt)
-    | L.Neg e ->
+    | TgNeg (tg, e) ->
         let s = unify t TyInt in
         let ls' = infer (subst_env s env) e (s TyInt) in
         (* TODO: (s TyInt) -> TyInt *)
-        let ls's = List.map (fun (s', p) -> (s' @* s, p)) ls' in
+        let ls's = List.map (fun (s', p, tgl) -> (s' @* s, p, tg :: tgl)) ls' in
         ls's
-    | L.Case (x, y, z, e1, e2) ->
+    | TgCase (tg, x, y, z, e1, e2) ->
         (* x binds to (y, z) *)
         let ls's_bind =
           let y_t = TyVar (new_var ()) in
           let z_t = TyVar (new_var ()) in
 
           let ls = infer env x (TyPair (y_t, z_t)) in
-          let lenv' = List.map (fun (s, _) -> subst_env s env) ls in
-          let ly_t' = List.map (fun (s, _) -> (s y_t, PtNil)) ls in
-          let lz_t' = List.map (fun (s, _) -> (s z_t, PtNil)) ls in
+          let lenv' = List.map (fun (s, _, _) -> subst_env s env) ls in
+          let ly_t' = List.map (fun (s, _, _) -> (s y_t, PtNil)) ls in
+          let lz_t' = List.map (fun (s, _, _) -> (s z_t, PtNil)) ls in
 
-          let gen_s' env' y_t' z_t' (s, _) =
+          let gen_s' env' y_t' z_t' (s, _, _) =
             infer ((y, y_t') :: (z, z_t') :: env') e1 (s t)
           in
           let lls' = map4 gen_s' lenv' ly_t' lz_t' ls in
           let lls's =
             List.map2
-              (fun (s, x_p) ls' ->
-                List.map (fun (s', e1_p) -> (s' @* s, PtCaseP (x_p, e1_p))) ls')
+              (fun (s, x_p, x_tgl) ls' ->
+                List.map
+                  (fun (s', e1_p, e1_tgl) ->
+                    (s' @* s, PtCaseP (x_p, e1_p), x_tgl @ e1_tgl))
+                  ls')
               ls lls'
           in
           let ls's = List.flatten lls's in
@@ -313,14 +365,17 @@ let rec infer (env : tp_env) (e : L.expr) (t : ty) : (substitution * path) list
         (* x is TyInt *)
         let ls's_nbind =
           let ls = infer env x TyInt in
-          let lenv' = List.map (fun (s, _) -> subst_env s env) ls in
+          let lenv' = List.map (fun (s, _, _) -> subst_env s env) ls in
 
-          let gen_s' env' (s, _) = infer env' e2 (s t) in
+          let gen_s' env' (s, _, _) = infer env' e2 (s t) in
           let lls' = List.map2 gen_s' lenv' ls in
           let lls's =
             List.map2
-              (fun (s, x_p) ls' ->
-                List.map (fun (s', e2_p) -> (s' @* s, PtCaseN (x_p, e2_p))) ls')
+              (fun (s, x_p, x_tgl) ls' ->
+                List.map
+                  (fun (s', e2_p, e2_tgl) ->
+                    (s' @* s, PtCaseN (x_p, e2_p), x_tgl @ e2_tgl))
+                  ls')
               ls lls'
           in
           let ls's = List.flatten lls's in
@@ -328,21 +383,22 @@ let rec infer (env : tp_env) (e : L.expr) (t : ty) : (substitution * path) list
         in
 
         ls's_bind @ ls's_nbind
-    | L.If (e_p, e_t, e_f) ->
+    | TgIf (tg, e_p, e_t, e_f) ->
         let ls = infer env e_p TyInt in
 
         let gen_ls's e_tf choice =
           let lls' =
-            List.map (fun (s, _) -> infer (subst_env s env) e_tf (s t)) ls
+            List.map (fun (s, _, _) -> infer (subst_env s env) e_tf (s t)) ls
           in
           let lls's =
             List.map2
-              (fun (s, e_p_p) ls' ->
+              (fun (s, e_p_p, e_p_tgl) ls' ->
                 List.map
-                  (fun (s', e_tf_p) ->
+                  (fun (s', e_tf_p, e_tf_tgl) ->
                     ( s' @* s,
-                      if choice then PtIfTru (e_p_p, e_tf_p)
-                      else PtIfFls (e_p_p, e_tf_p) ))
+                      (if choice then PtIfTru (e_p_p, e_tf_p)
+                      else PtIfFls (e_p_p, e_tf_p)),
+                      e_p_tgl @ e_tf_tgl ))
                   ls')
               ls lls'
           in
@@ -352,19 +408,22 @@ let rec infer (env : tp_env) (e : L.expr) (t : ty) : (substitution * path) list
         let ls's_t = gen_ls's e_t true in
         let ls's_f = gen_ls's e_f false in
         ls's_t @ ls's_f
-    | L.Let (x, v, e) ->
+    | TgLet (tg, x, v, e) ->
         let x_t = TyVar (new_var ()) in
 
         let ls = infer env v x_t in
-        let lenv' = List.map (fun (s, _) -> subst_env s env) ls in
-        let lx_tp' = List.map (fun (s, x_p) -> (s x_t, x_p)) ls in
+        let lenv' = List.map (fun (s, _, _) -> subst_env s env) ls in
+        let lx_tp' = List.map (fun (s, x_p, _) -> (s x_t, x_p)) ls in
 
-        let gen_s' env' x_tp' (s, _) = infer ((x, x_tp') :: env') e (s t) in
+        let gen_s' env' x_tp' (s, _, _) = infer ((x, x_tp') :: env') e (s t) in
         let lls' = map3 gen_s' lenv' lx_tp' ls in
         let lls's =
           List.map2
-            (fun (s, v_p) ls' ->
-              List.map (fun (s', e_p) -> (s' @* s, PtLet (v_p, e_p))) ls')
+            (fun (s, v_p, v_tgl) ls' ->
+              List.map
+                (fun (s', e_p, e_tgl) ->
+                  (s' @* s, PtLet (v_p, e_p), v_tgl @ e_tgl))
+                ls')
             ls lls'
         in
         let ls's = List.flatten lls's in
@@ -372,10 +431,11 @@ let rec infer (env : tp_env) (e : L.expr) (t : ty) : (substitution * path) list
   with UnificationError -> []
 
 (* Returns the possible combinations of the [] and the output *)
-let type_check (e : L.expr) (t : ty) : (ty * ty * path) list =
+let type_check (e : L.expr) (t : ty) : (ty * ty * path * tag list) list =
   let hole_type = TyVar "τ" in
-  let ls = infer [] e t in
-  List.map (fun (subst, pt) -> (subst hole_type, subst t, pt)) ls
+  let tagged_e = tag_exp e in
+  let ls = infer [] tagged_e t in
+  List.map (fun (subst, pt, tgl) -> (subst hole_type, subst t, pt, tgl)) ls
 
 (* samples is a list of input-output pairs *)
 let version, samples, root_expr = main ()
@@ -433,9 +493,9 @@ let out_types =
        (fun p -> (val_to_expr @@ fst @@ p, val_to_type @@ snd @@ p))
        converted_samples)
 
-let rec print_type_list (typts : (ty * ty * path) list) : unit =
+let rec print_type_list (typts : (ty * ty * path * tag list) list) : unit =
   match typts with
-  | (ht, ot, pt) :: ps ->
+  | (ht, ot, pt, tgl) :: ps ->
       let pt' =
         match pt with
         | PtLet (_, pt') -> pt'
@@ -444,7 +504,7 @@ let rec print_type_list (typts : (ty * ty * path) list) : unit =
       print_endline
         ("| []: \027[31m" ^ type_to_string ht ^ "\027[0m, O: \027[31m"
        ^ type_to_string ot ^ "\027[0m, Trace: \027[32m" ^ path_to_string pt'
-       ^ "\027[0m");
+       ^ "\027[0m; " ^ tags_to_string tgl);
       print_type_list ps
   | [] -> ()
 
