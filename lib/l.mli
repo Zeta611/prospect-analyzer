@@ -5,7 +5,6 @@ and value =
   | VNum of number
   | VPair of value * value
 
-and foo = value
 and input = value
 and output = value
 and samples = (input * output) list
