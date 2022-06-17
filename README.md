@@ -4,9 +4,9 @@ See the [documentation](ln.pdf) for syntax and semantics.
 ## Usage
 To run, execute
 ```sh
-./l <test.l
+./_build/default/bin/main.exe <test.l
 ```
-after `make`.
+after `dune build`.
 
 ## Sample code
 ```
