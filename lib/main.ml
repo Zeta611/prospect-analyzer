@@ -259,7 +259,7 @@ let subst_env (subs : substitution) (env : tp_env) : tp_env =
   List.map (fun (x, (t, p)) -> (x, (subs t, p))) env
 
 let rec tyvars_in_type (t : ty) : tyvar list =
-  let rec union (tyvars1 : tyvar list) (tyvars2 : tyvar list) : tyvar list =
+  let union (tyvars1 : tyvar list) (tyvars2 : tyvar list) : tyvar list =
     let tyvars1_sub_tyvars2 =
       List.filter (fun tv -> not (List.mem tv tyvars2)) tyvars1
     in
@@ -341,9 +341,9 @@ let rec infer (env : tp_env) (e : tagged_exp) (t : ty) :
     | TgHole tg ->
         let h_t = TyVar "τ" in
         [ (unify t h_t, PtNil, [ tg ]) ]
-    | TgNum (tg, n) -> [ (unify t TyInt, PtNil, [ tg ]) ]
+    | TgNum (tg, _) -> [ (unify t TyInt, PtNil, [ tg ]) ]
     | TgVar (tg, x) ->
-        let x_t, x_p = lookup x env in
+        let x_t, _ = lookup x env in
         (* [ (unify t x_t, x_p) ] *)
         [ (unify t x_t, PtNil, [ tg ]) ]
     | TgPair (tg, e1, e2) ->
@@ -390,7 +390,7 @@ let rec infer (env : tp_env) (e : tagged_exp) (t : ty) :
               (fun (s, x_p, x_tgl) ls' ->
                 List.map
                   (fun (s', e1_p, e1_tgl) ->
-                    (s' @* s, PtCaseP (x_p, e1_p), x_tgl @ e1_tgl))
+                    (s' @* s, PtCaseP (x_p, e1_p), tg :: (x_tgl @ e1_tgl)))
                   ls')
               ls lls'
           in
@@ -410,7 +410,7 @@ let rec infer (env : tp_env) (e : tagged_exp) (t : ty) :
               (fun (s, x_p, x_tgl) ls' ->
                 List.map
                   (fun (s', e2_p, e2_tgl) ->
-                    (s' @* s, PtCaseN (x_p, e2_p), x_tgl @ e2_tgl))
+                    (s' @* s, PtCaseN (x_p, e2_p), tg :: (x_tgl @ e2_tgl)))
                   ls')
               ls lls'
           in
@@ -434,7 +434,7 @@ let rec infer (env : tp_env) (e : tagged_exp) (t : ty) :
                     ( s' @* s,
                       (if choice then PtIfTru (e_p_p, e_tf_p)
                       else PtIfFls (e_p_p, e_tf_p)),
-                      e_p_tgl @ e_tf_tgl ))
+                      tg :: (e_p_tgl @ e_tf_tgl) ))
                   ls')
               ls lls'
           in
@@ -536,7 +536,7 @@ let rec check_version version expr =
           check_version version e_p;
           check_version version e_t;
           check_version version e_f
-      | L.Let (x, v, e) ->
+      | L.Let (_, v, e) ->
           check_version version v;
           check_version version e
       | L.Hole -> ()
@@ -583,7 +583,7 @@ let rec print_type_list (typts : (ty * ty * path * tag list) list) : unit =
       print_type_list ps
   | [] -> ()
 
-let _ =
+let run () =
   if List.flatten out_types = [] then print_endline "Unsatisfiable!"
   else List.iter print_type_list out_types
 
