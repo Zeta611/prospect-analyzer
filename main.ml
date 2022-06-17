@@ -131,7 +131,7 @@ and path =
   | PtLet of path * path
 
 and tp_env = (id * (ty * path)) list
-and tag = string
+and tag = int
 
 and tagged_exp =
   | TgHole of tag
@@ -169,10 +169,26 @@ let rec path_to_string = function
   | PtLet (p1, p2) ->
       "let . = (" ^ path_to_string p1 ^ ") in (" ^ path_to_string p2 ^ ")"
 
+let colorize (col : int) (text : string) : string =
+  let xterm_256_color (color : int) : string =
+    let escape_prefix = "\027" (* = \e = \0x1B = (\033 in oct) *) in
+    let finish = "m" in
+    escape_prefix ^ "[38;5;" ^ string_of_int color ^ finish
+  in
+  let reset = "\027[0m" in
+  xterm_256_color col ^ text ^ reset
+
+let palette =
+  [ 046; 045; 166; 105; 226; 207; 063; 027; 165; 166; 219; 069; 202 ]
+
+let colorize_palatte t =
+  colorize (List.nth palette ((t - 1) mod List.length palette))
+
 let rec tags_to_string = function
   | [] -> ""
-  | [ hd ] -> hd
-  | hd :: tl -> hd ^ "->" ^ tags_to_string tl
+  | [ hd ] -> colorize_palatte hd ("ℓ" ^ string_of_int hd)
+  | hd :: tl ->
+      colorize_palatte hd ("ℓ" ^ string_of_int hd) ^ "-" ^ tags_to_string tl
 
 let var_count = ref 0
 
@@ -183,24 +199,42 @@ let new_var () =
 let tag_count = ref 0
 
 let new_tag () =
-  let _ = tag_count := !tag_count + 1 in
-  "ℓ" ^ string_of_int !tag_count
+  incr tag_count;
+  !tag_count
+(* let _ = tag_count := !tag_count + 1 in *)
+(* "ℓ" ^ string_of_int !tag_count *)
 
 let rec tag_exp (e : L.expr) : tagged_exp =
   let tg = new_tag () in
   match e with
   | Hole -> TgHole tg
   | Num n -> TgNum (tg, n)
-  | Var id -> TgVar (tg, id)
-  | Pair (e1, e2) -> TgPair (tg, tag_exp e1, tag_exp e2)
+  | Var x -> TgVar (tg, x)
+  | Pair (e1, e2) ->
+      let te1 = tag_exp e1 in
+      let te2 = tag_exp e2 in
+      TgPair (tg, te1, te2)
   | Fst e -> TgFst (tg, tag_exp e)
   | Snd e -> TgSnd (tg, tag_exp e)
-  | Add (e1, e2) -> TgAdd (tg, tag_exp e1, tag_exp e2)
+  | Add (e1, e2) ->
+      let te1 = tag_exp e1 in
+      let te2 = tag_exp e2 in
+      TgAdd (tg, te1, te2)
   | Neg e -> TgNeg (tg, tag_exp e)
   | Case (x, y, z, e1, e2) ->
-      TgCase (tg, tag_exp x, y, z, tag_exp e1, tag_exp e2)
-  | If (e1, e2, e3) -> TgIf (tg, tag_exp e1, tag_exp e2, tag_exp e3)
-  | Let (x, e1, e2) -> TgLet (tg, x, tag_exp e1, tag_exp e2)
+      let tx = tag_exp x in
+      let te1 = tag_exp e1 in
+      let te2 = tag_exp e2 in
+      TgCase (tg, tx, y, z, te1, te2)
+  | If (e_p, e_t, e_f) ->
+      let te_p = tag_exp e_p in
+      let te_t = tag_exp e_t in
+      let te_f = tag_exp e_f in
+      TgIf (tg, te_p, te_t, te_f)
+  | Let (x, exp, body) ->
+      let te = tag_exp exp in
+      let tb = tag_exp body in
+      TgLet (tg, x, te, tb)
 
 (* type env *)
 let lookup (x : id) (env : tp_env) : ty * path =
@@ -432,44 +466,34 @@ let rec infer (env : tp_env) (e : tagged_exp) (t : ty) :
         ls's
   with UnificationError -> []
 
-let ansicolor (color : int) : string =
-  let escape_prefix = "\027" (* = \e = \0x1B = (\033 in oct) *) in
-  let finish = "m" in
-  escape_prefix ^ "[" ^ string_of_int color ^ finish
-
-let reset = ansicolor 0
-let green = ansicolor 32
-let red = ansicolor 31
-let colorize (col : string) (text : string) : string = col ^ text ^ reset
-
 let rec tagged_exp_to_string e =
-  let parwrap s = "(" ^ s ^ ")" in
-  let annot t s = s ^ " : " ^ t in
+  let parwrap t s = colorize_palatte t "[" ^ s ^ colorize_palatte t "]" in
+  let annot t s = s ^ colorize_palatte t (" : " ^ "ℓ" ^ string_of_int t) in
   match e with
-  | TgHole t -> annot t "[]" |> parwrap
-  | TgNum (t, n) -> string_of_int n |> annot t |> parwrap
-  | TgVar (t, v) -> annot t v |> parwrap
+  | TgHole t -> annot t "[]" |> parwrap t
+  | TgNum (t, n) -> string_of_int n |> annot t |> parwrap t
+  | TgVar (t, x) -> annot t x |> parwrap t
   | TgPair (t, e1, e2) ->
-      tagged_exp_to_string e1 ^ ", " ^ tagged_exp_to_string e2
-      |> parwrap |> annot t |> parwrap
-  | TgFst (t, e) -> tagged_exp_to_string e ^ ".1" |> annot t |> parwrap
-  | TgSnd (t, e) -> tagged_exp_to_string e ^ ".2" |> annot t |> parwrap
+      "(" ^ tagged_exp_to_string e1 ^ ", " ^ tagged_exp_to_string e2 ^ ")"
+      |> annot t |> parwrap t
+  | TgFst (t, e) -> tagged_exp_to_string e ^ ".1" |> annot t |> parwrap t
+  | TgSnd (t, e) -> tagged_exp_to_string e ^ ".2" |> annot t |> parwrap t
   | TgAdd (t, e1, e2) ->
       tagged_exp_to_string e1 ^ " + " ^ tagged_exp_to_string e2
-      |> annot t |> parwrap
-  | TgNeg (t, e) -> "-" ^ tagged_exp_to_string e |> annot t |> parwrap
+      |> annot t |> parwrap t
+  | TgNeg (t, e) -> "-" ^ tagged_exp_to_string e |> annot t |> parwrap t
   | TgCase (t, x, y, z, e1, e2) ->
       "case " ^ tagged_exp_to_string x ^ " (" ^ y ^ "," ^ z ^ ") "
       ^ tagged_exp_to_string e1 ^ " " ^ tagged_exp_to_string e2
-      |> annot t |> parwrap
-  | TgIf (t, e1, e2, e3) ->
-      "if " ^ tagged_exp_to_string e1 ^ " " ^ tagged_exp_to_string e1 ^ " "
-      ^ tagged_exp_to_string e2
-      |> annot t |> parwrap
-  | TgLet (t, x, e1, e2) ->
-      "let " ^ x ^ " = " ^ tagged_exp_to_string e1 ^ " in "
-      ^ tagged_exp_to_string e2
-      |> annot t |> parwrap
+      |> annot t |> parwrap t
+  | TgIf (t, e_p, e_t, e_f) ->
+      "if " ^ tagged_exp_to_string e_p ^ " " ^ tagged_exp_to_string e_t ^ " "
+      ^ tagged_exp_to_string e_f
+      |> annot t |> parwrap t
+  | TgLet (t, x, exp, body) ->
+      "let " ^ x ^ " = " ^ tagged_exp_to_string exp ^ " in "
+      ^ tagged_exp_to_string body
+      |> annot t |> parwrap t
 
 (* Returns the possible combinations of the [] and the output *)
 let type_check (e : L.expr) (t : ty) : (ty * ty * path * tag list) list =
@@ -550,11 +574,11 @@ let rec print_type_list (typts : (ty * ty * path * tag list) list) : unit =
       in
       print_endline
         ("| []: "
-        ^ colorize red (type_to_string ht)
+        ^ colorize 009 (type_to_string ht)
         ^ ", O: "
-        ^ colorize red (type_to_string ot)
+        ^ colorize 009 (type_to_string ot)
         ^ ", Trace: "
-        ^ colorize green (path_to_string pt')
+        ^ colorize 011 (path_to_string pt')
         ^ "; " ^ tags_to_string tgl);
       print_type_list ps
   | [] -> ()
