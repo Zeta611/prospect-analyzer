@@ -21,3 +21,5 @@ Type checker version: L1
 | []: τ, O: ι, Trace: let . = ((., .)) in (case (.) : * if (.) ≠ 0 .); ℓ1-ℓ2-ℓ3-ℓ4-ℓ5-ℓ6-ℓ8-ℓ10-ℓ11-ℓ12
 | []: τ, O: ι, Trace: let . = ((., .)) in (case (.) : * if (.) = 0 .); ℓ1-ℓ2-ℓ3-ℓ4-ℓ5-ℓ6-ℓ8-ℓ10-ℓ11-ℓ13-ℓ14
 ```
+The output is xterm-256 colorized:
+![Capture](./capture.png)
