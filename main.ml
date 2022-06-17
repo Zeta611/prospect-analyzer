@@ -432,6 +432,16 @@ let rec infer (env : tp_env) (e : tagged_exp) (t : ty) :
         ls's
   with UnificationError -> []
 
+let ansicolor (color : int) : string =
+  let escape_prefix = "\027" (* = \e = \0x1B = (\033 in oct) *) in
+  let finish = "m" in
+  escape_prefix ^ "[" ^ string_of_int color ^ finish
+
+let reset = ansicolor 0
+let green = ansicolor 32
+let red = ansicolor 31
+let colorize (col : string) (text : string) : string = col ^ text ^ reset
+
 let rec tagged_exp_to_string e =
   let parwrap s = "(" ^ s ^ ")" in
   let annot t s = s ^ " : " ^ t in
@@ -539,9 +549,13 @@ let rec print_type_list (typts : (ty * ty * path * tag list) list) : unit =
         | _ -> failwith "No top-level binding for x; programming error"
       in
       print_endline
-        ("| []: \027[31m" ^ type_to_string ht ^ "\027[0m, O: \027[31m"
-       ^ type_to_string ot ^ "\027[0m, Trace: \027[32m" ^ path_to_string pt'
-       ^ "\027[0m; " ^ tags_to_string tgl);
+        ("| []: "
+        ^ colorize red (type_to_string ht)
+        ^ ", O: "
+        ^ colorize red (type_to_string ot)
+        ^ ", Trace: "
+        ^ colorize green (path_to_string pt')
+        ^ "; " ^ tags_to_string tgl);
       print_type_list ps
   | [] -> ()
 
