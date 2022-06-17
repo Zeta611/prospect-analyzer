@@ -171,6 +171,7 @@ let rec path_to_string = function
 
 let rec tags_to_string = function
   | [] -> ""
+  | [ hd ] -> hd
   | hd :: tl -> hd ^ "->" ^ tags_to_string tl
 
 let var_count = ref 0
@@ -186,19 +187,20 @@ let new_tag () =
   "ℓ" ^ string_of_int !tag_count
 
 let rec tag_exp (e : L.expr) : tagged_exp =
+  let tg = new_tag () in
   match e with
-  | Hole -> TgHole (new_tag ())
-  | Num n -> TgNum (new_tag (), n)
-  | Var id -> TgVar (new_tag (), id)
-  | Pair (e1, e2) -> TgPair (new_tag (), tag_exp e1, tag_exp e2)
-  | Fst e -> TgFst (new_tag (), tag_exp e)
-  | Snd e -> TgSnd (new_tag (), tag_exp e)
-  | Add (e1, e2) -> TgAdd (new_tag (), tag_exp e1, tag_exp e2)
-  | Neg e -> TgNeg (new_tag (), tag_exp e)
+  | Hole -> TgHole tg
+  | Num n -> TgNum (tg, n)
+  | Var id -> TgVar (tg, id)
+  | Pair (e1, e2) -> TgPair (tg, tag_exp e1, tag_exp e2)
+  | Fst e -> TgFst (tg, tag_exp e)
+  | Snd e -> TgSnd (tg, tag_exp e)
+  | Add (e1, e2) -> TgAdd (tg, tag_exp e1, tag_exp e2)
+  | Neg e -> TgNeg (tg, tag_exp e)
   | Case (x, y, z, e1, e2) ->
-      TgCase (new_tag (), tag_exp x, y, z, tag_exp e1, tag_exp e2)
-  | If (e1, e2, e3) -> TgIf (new_tag (), tag_exp e1, tag_exp e2, tag_exp e3)
-  | Let (x, e1, e2) -> TgLet (new_tag (), x, tag_exp e1, tag_exp e2)
+      TgCase (tg, tag_exp x, y, z, tag_exp e1, tag_exp e2)
+  | If (e1, e2, e3) -> TgIf (tg, tag_exp e1, tag_exp e2, tag_exp e3)
+  | Let (x, e1, e2) -> TgLet (tg, x, tag_exp e1, tag_exp e2)
 
 (* type env *)
 let lookup (x : id) (env : tp_env) : ty * path =
@@ -422,7 +424,7 @@ let rec infer (env : tp_env) (e : tagged_exp) (t : ty) :
             (fun (s, v_p, v_tgl) ls' ->
               List.map
                 (fun (s', e_p, e_tgl) ->
-                  (s' @* s, PtLet (v_p, e_p), v_tgl @ e_tgl))
+                  (s' @* s, PtLet (v_p, e_p), tg :: (v_tgl @ e_tgl)))
                 ls')
             ls lls'
         in
@@ -430,10 +432,45 @@ let rec infer (env : tp_env) (e : tagged_exp) (t : ty) :
         ls's
   with UnificationError -> []
 
+let rec tagged_exp_to_string e =
+  let parwrap s = "(" ^ s ^ ")" in
+  let annot t s = s ^ " : " ^ t in
+  match e with
+  | TgHole t -> annot t "[]" |> parwrap
+  | TgNum (t, n) -> string_of_int n |> annot t |> parwrap
+  | TgVar (t, v) -> annot t v |> parwrap
+  | TgPair (t, e1, e2) ->
+      tagged_exp_to_string e1 ^ ", " ^ tagged_exp_to_string e2
+      |> parwrap |> annot t |> parwrap
+  | TgFst (t, e) -> tagged_exp_to_string e ^ ".1" |> annot t |> parwrap
+  | TgSnd (t, e) -> tagged_exp_to_string e ^ ".2" |> annot t |> parwrap
+  | TgAdd (t, e1, e2) ->
+      tagged_exp_to_string e1 ^ " + " ^ tagged_exp_to_string e2
+      |> annot t |> parwrap
+  | TgNeg (t, e) -> "-" ^ tagged_exp_to_string e |> annot t |> parwrap
+  | TgCase (t, x, y, z, e1, e2) ->
+      "case " ^ tagged_exp_to_string x ^ " (" ^ y ^ "," ^ z ^ ") "
+      ^ tagged_exp_to_string e1 ^ " " ^ tagged_exp_to_string e2
+      |> annot t |> parwrap
+  | TgIf (t, e1, e2, e3) ->
+      "if " ^ tagged_exp_to_string e1 ^ " " ^ tagged_exp_to_string e1 ^ " "
+      ^ tagged_exp_to_string e2
+      |> annot t |> parwrap
+  | TgLet (t, x, e1, e2) ->
+      "let " ^ x ^ " = " ^ tagged_exp_to_string e1 ^ " in "
+      ^ tagged_exp_to_string e2
+      |> annot t |> parwrap
+
 (* Returns the possible combinations of the [] and the output *)
 let type_check (e : L.expr) (t : ty) : (ty * ty * path * tag list) list =
   let hole_type = TyVar "τ" in
   let tagged_e = tag_exp e in
+  (* let tagged_e' = *)
+  (*   match tagged_e with *)
+  (*   | TgLet (_, _, _, e) -> e *)
+  (*   | _ -> failwith "No top-level binding for x; programming error" *)
+  (* in *)
+  let _ = print_endline (tagged_exp_to_string tagged_e) in
   let ls = infer [] tagged_e t in
   List.map (fun (subst, pt, tgl) -> (subst hole_type, subst t, pt, tgl)) ls
 
