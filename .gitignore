@@ -2,6 +2,7 @@ l
 lexer.ml
 parser.ml
 parser.mli
+*~
 # Created by https://www.toptal.com/developers/gitignore/api/macOS,OCaml,LaTeX
 # Edit at https://www.toptal.com/developers/gitignore?templates=macOS,OCaml,LaTeX
 

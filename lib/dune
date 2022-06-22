@@ -1,6 +1,5 @@
 (library
- (name analyzer)
- (modules_without_implementation l))
+ (name analyzer))
 
 (ocamllex lexer)
 

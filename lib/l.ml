@@ -1,12 +1,17 @@
 type prog = version * samples * expr
 and version = int
 
-and value =
+and vvalue =
   | VNum of number
-  | VPair of value * value
+  | VPair of vvalue * vvalue
 
-and input = value
-and output = value
+and hvalue =
+  | HHole
+  | HNum of number
+  | HPair of hvalue * hvalue
+
+and input = vvalue
+and output = vvalue
 and samples = (input * output) list
 and number = int
 and id = string
@@ -23,3 +28,8 @@ and expr =
   | Case of expr * id * id * expr * expr
   | If of expr * expr * expr
   | Let of id * expr * expr
+
+(* Convert input-output value types to the `value` type *)
+let rec vvalue_to_hvalue = function
+  | VNum n -> HNum n
+  | VPair (a, b) -> HPair (vvalue_to_hvalue a, vvalue_to_hvalue b)
