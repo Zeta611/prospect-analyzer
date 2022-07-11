@@ -343,15 +343,14 @@ let rec infer (env : tp_env) (e : tagged_exp) (t : ty) :
         ls's
   with UnificationError -> []
 
-open Colorizer
-
-let rec tags_to_string = function
-  | [] -> ""
-  | [ hd ] -> colorize_palatte hd ("ℓ" ^ string_of_int hd)
-  | hd :: tl ->
-      colorize_palatte hd ("ℓ" ^ string_of_int hd) ^ "-" ^ tags_to_string tl
-
 let rec print_type_list (typts : (ty * ty * path * tag list) list) : unit =
+  let open Colorizer in
+  let rec tags_to_string = function
+    | [] -> ""
+    | [ hd ] -> colorize_palette hd ("ℓ" ^ string_of_int hd)
+    | hd :: tl ->
+        colorize_palette hd ("ℓ" ^ string_of_int hd) ^ "-" ^ tags_to_string tl
+  in
   match typts with
   | (ht, ot, pt, tgl) :: ps ->
       let pt' =
@@ -371,8 +370,9 @@ let rec print_type_list (typts : (ty * ty * path * tag list) list) : unit =
   | [] -> ()
 
 let rec tagged_exp_to_string e =
-  let parwrap t s = colorize_palatte t "[" ^ s ^ colorize_palatte t "]" in
-  let annot t s = s ^ colorize_palatte t (" : " ^ "ℓ" ^ string_of_int t) in
+  let open Colorizer in
+  let parwrap t s = colorize_palette t "[" ^ s ^ colorize_palette t "]" in
+  let annot t s = s ^ colorize_palette t (" : " ^ "ℓ" ^ string_of_int t) in
   match e with
   | TgHole t -> annot t "[]" |> parwrap t
   | TgNum (t, n) -> string_of_int n |> annot t |> parwrap t

@@ -10,5 +10,5 @@ let colorize (col : int) (text : string) : string =
 let palette =
   [ 046; 045; 166; 105; 226; 207; 063; 027; 165; 166; 219; 069; 202 ]
 
-let colorize_palatte t =
+let colorize_palette t =
   colorize (List.nth palette ((t - 1) mod List.length palette))

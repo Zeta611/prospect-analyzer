@@ -1,18 +1,20 @@
 type prog = version * samples * expr
 and version = int
 
+(* Value types for input & output samples *)
 and vvalue =
   | VNum of number
   | VPair of vvalue * vvalue
+
+and input = vvalue
+and output = vvalue
+and samples = (input * output) list
 
 and hvalue =
   | HHole
   | HNum of number
   | HPair of hvalue * hvalue
 
-and input = vvalue
-and output = vvalue
-and samples = (input * output) list
 and number = int
 and id = string
 
