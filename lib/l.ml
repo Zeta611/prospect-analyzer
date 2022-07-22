@@ -32,6 +32,11 @@ and expr =
   | Let of id * expr * expr
 
 (* Convert input-output value types to the `value` type *)
-let rec vvalue_to_hvalue = function
+let rec hvalue_of_vvalue = function
   | VNum n -> HNum n
-  | VPair (a, b) -> HPair (vvalue_to_hvalue a, vvalue_to_hvalue b)
+  | VPair (a, b) -> HPair (hvalue_of_vvalue a, hvalue_of_vvalue b)
+
+let rec expr_of_hvalue = function
+  | HHole -> Hole
+  | HNum n -> Num n
+  | HPair (a, b) -> Pair (expr_of_hvalue a, expr_of_hvalue b)

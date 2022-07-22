@@ -44,28 +44,36 @@ and tagged_exp =
   | TgIf of tag * tagged_exp * tagged_exp * tagged_exp
   | TgLet of tag * id * tagged_exp * tagged_exp
 
+let rec type_of_hvalue = function
+  | L.HHole -> None
+  | L.HNum _ -> Some TyInt
+  | L.HPair (a, b) -> (
+      match (type_of_hvalue a, type_of_hvalue b) with
+      | Some ta, Some tb -> Some (TyPair (ta, tb))
+      | _, _ -> None)
+
 exception UnificationError
 
-let rec type_to_string = function
+let rec string_of_type = function
   | TyInt -> "ι"
-  | TyPair (e1, e2) -> "(" ^ type_to_string e1 ^ ", " ^ type_to_string e2 ^ ")"
+  | TyPair (e1, e2) -> "(" ^ string_of_type e1 ^ ", " ^ string_of_type e2 ^ ")"
   | TyHole -> "[]"
   | TyVar tv -> tv
 
-let rec path_to_string = function
+let rec string_of_path = function
   | PtNil -> "."
-  | PtPair (p1, p2) -> "(" ^ path_to_string p1 ^ ", " ^ path_to_string p2 ^ ")"
-  | PtAdd (p1, p2) -> path_to_string p1 ^ " + " ^ path_to_string p2
+  | PtPair (p1, p2) -> "(" ^ string_of_path p1 ^ ", " ^ string_of_path p2 ^ ")"
+  | PtAdd (p1, p2) -> string_of_path p1 ^ " + " ^ string_of_path p2
   | PtCaseP (p1, p2) ->
-      "case (" ^ path_to_string p1 ^ ") : * " ^ path_to_string p2
+      "case (" ^ string_of_path p1 ^ ") : * " ^ string_of_path p2
   | PtCaseN (p1, p2) ->
-      "case (" ^ path_to_string p1 ^ ") : ι " ^ path_to_string p2
+      "case (" ^ string_of_path p1 ^ ") : ι " ^ string_of_path p2
   | PtIfTru (p1, p2) ->
-      "if (" ^ path_to_string p1 ^ ") ≠ 0 " ^ path_to_string p2
+      "if (" ^ string_of_path p1 ^ ") ≠ 0 " ^ string_of_path p2
   | PtIfFls (p1, p2) ->
-      "if (" ^ path_to_string p1 ^ ") = 0 " ^ path_to_string p2
+      "if (" ^ string_of_path p1 ^ ") = 0 " ^ string_of_path p2
   | PtLet (p1, p2) ->
-      "let . = (" ^ path_to_string p1 ^ ") in (" ^ path_to_string p2 ^ ")"
+      "let . = (" ^ string_of_path p1 ^ ") in (" ^ string_of_path p2 ^ ")"
 
 let var_count = ref 0
 
@@ -360,16 +368,16 @@ let rec print_type_list (typts : (ty * ty * path * tag list) list) : unit =
       in
       print_endline
         ("| []: "
-        ^ colorize 009 (type_to_string ht)
+        ^ colorize 009 (string_of_type ht)
         ^ ", O: "
-        ^ colorize 009 (type_to_string ot)
+        ^ colorize 009 (string_of_type ot)
         ^ ", Trace: "
-        ^ colorize 011 (path_to_string pt')
+        ^ colorize 011 (string_of_path pt')
         ^ "; " ^ tags_to_string tgl);
       print_type_list ps
   | [] -> ()
 
-let rec tagged_exp_to_string e =
+let rec string_of_tagged_exp e =
   let open Colorizer in
   let parwrap t s = colorize_palette t "[" ^ s ^ colorize_palette t "]" in
   let annot t s = s ^ colorize_palette t (" : " ^ "ℓ" ^ string_of_int t) in
@@ -378,25 +386,25 @@ let rec tagged_exp_to_string e =
   | TgNum (t, n) -> string_of_int n |> annot t |> parwrap t
   | TgVar (t, x) -> annot t x |> parwrap t
   | TgPair (t, e1, e2) ->
-      "(" ^ tagged_exp_to_string e1 ^ ", " ^ tagged_exp_to_string e2 ^ ")"
+      "(" ^ string_of_tagged_exp e1 ^ ", " ^ string_of_tagged_exp e2 ^ ")"
       |> annot t |> parwrap t
-  | TgFst (t, e) -> tagged_exp_to_string e ^ ".1" |> annot t |> parwrap t
-  | TgSnd (t, e) -> tagged_exp_to_string e ^ ".2" |> annot t |> parwrap t
+  | TgFst (t, e) -> string_of_tagged_exp e ^ ".1" |> annot t |> parwrap t
+  | TgSnd (t, e) -> string_of_tagged_exp e ^ ".2" |> annot t |> parwrap t
   | TgAdd (t, e1, e2) ->
-      tagged_exp_to_string e1 ^ " + " ^ tagged_exp_to_string e2
+      string_of_tagged_exp e1 ^ " + " ^ string_of_tagged_exp e2
       |> annot t |> parwrap t
-  | TgNeg (t, e) -> "-" ^ tagged_exp_to_string e |> annot t |> parwrap t
+  | TgNeg (t, e) -> "-" ^ string_of_tagged_exp e |> annot t |> parwrap t
   | TgCase (t, x, y, z, e1, e2) ->
-      "case " ^ tagged_exp_to_string x ^ " (" ^ y ^ "," ^ z ^ ") "
-      ^ tagged_exp_to_string e1 ^ " " ^ tagged_exp_to_string e2
+      "case " ^ string_of_tagged_exp x ^ " (" ^ y ^ "," ^ z ^ ") "
+      ^ string_of_tagged_exp e1 ^ " " ^ string_of_tagged_exp e2
       |> annot t |> parwrap t
   | TgIf (t, e_p, e_t, e_f) ->
-      "if " ^ tagged_exp_to_string e_p ^ " " ^ tagged_exp_to_string e_t ^ " "
-      ^ tagged_exp_to_string e_f
+      "if " ^ string_of_tagged_exp e_p ^ " " ^ string_of_tagged_exp e_t ^ " "
+      ^ string_of_tagged_exp e_f
       |> annot t |> parwrap t
   | TgLet (t, x, exp, body) ->
-      "let " ^ x ^ " = " ^ tagged_exp_to_string exp ^ " in "
-      ^ tagged_exp_to_string body
+      "let " ^ x ^ " = " ^ string_of_tagged_exp exp ^ " in "
+      ^ string_of_tagged_exp body
       |> annot t |> parwrap t
 
 (* Returns the possible combinations of the [] and the output *)
@@ -408,6 +416,6 @@ let type_check (e : L.expr) (t : ty) : (ty * ty * path * tag list) list =
   (*   | TgLet (_, _, _, e) -> e *)
   (*   | _ -> failwith "No top-level binding for x; programming error" *)
   (* in *)
-  let _ = print_endline (tagged_exp_to_string tagged_e) in
+  let _ = print_endline (string_of_tagged_exp tagged_e) in
   let ls = infer [] tagged_e t in
   List.map (fun (subst, pt, tgl) -> (subst hole_type, subst t, pt, tgl)) ls
