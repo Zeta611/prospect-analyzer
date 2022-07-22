@@ -47,10 +47,11 @@ and tagged_exp =
 let rec type_of_hvalue = function
   | L.HHole -> None
   | L.HNum _ -> Some TyInt
-  | L.HPair (a, b) -> (
-      match (type_of_hvalue a, type_of_hvalue b) with
-      | Some ta, Some tb -> Some (TyPair (ta, tb))
-      | _, _ -> None)
+  | L.HPair (a, b) ->
+      let open Monads.Option in
+      let* ta = type_of_hvalue a in
+      let* tb = type_of_hvalue b in
+      return (TyPair (ta, tb))
 
 exception UnificationError
 
