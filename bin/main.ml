@@ -1,17 +1,25 @@
 open Analyzer
-open Shape_analyzer
 
 let usage_msg = "[-shape]"
 let shape_analysis = ref false
 let input_files = ref []
 let anon_fun filename = input_files := filename :: !input_files
 let speclist = [ ("-shape", Arg.Set shape_analysis, "Shape analysis") ]
+let first_flag = ref true
 
 let _ =
   Arg.parse speclist anon_fun usage_msg;
+  input_files := List.rev !input_files;
 
   let open Monads.List in
   let+ filename = !input_files in
+
+  let is_first =
+    if !first_flag then (
+      first_flag := false;
+      true)
+    else false
+  in
 
   let l_program = filename |> In_channel.open_text |> Util.get_program in
   (* samples is a list of input-output pairs *)
@@ -24,25 +32,21 @@ let _ =
   in
 
   if !shape_analysis then (
-    (* Process version *)
-    (* let _ = print_string "Interpreter version: L" *)
-    Printf.printf "Shape analyzer version: L%d\n" version;
+    let open Shape_analyzer in
+    if not is_first then print_newline () else ();
+    Printf.printf "Shape analyzer. %s (L%d)\n" filename version;
+
     let out_types =
       let type_of_hvalue hvalue =
         match type_of_hvalue hvalue with
         | Some t -> t
         | None -> failwith "Hole should not exist in output"
       in
-      List.map
-        (fun (i, t) -> type_check (L.Let ("x", i, root_expr)) t)
-        (List.map
-           (fun p -> (L.expr_of_hvalue @@ fst @@ p, type_of_hvalue @@ snd @@ p))
-           converted_samples)
+      let+ i, o = converted_samples in
+      let iv, ot = (L.expr_of_hvalue i, type_of_hvalue o) in
+      type_check (L.Let ("x", iv, root_expr)) ot
     in
 
-    let () =
-      if List.flatten out_types = [] then print_endline "Unsatisfiable!"
-      else List.iter print_type_list out_types
-    in
-    ())
+    if List.flatten out_types = [] then print_endline "Unsatisfiable!"
+    else List.iter print_type_list out_types)
   else ()
