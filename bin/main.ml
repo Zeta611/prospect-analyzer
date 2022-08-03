@@ -31,11 +31,15 @@ let _ =
     L.(hvalue_of_vvalue i, hvalue_of_vvalue o)
   in
 
-  if !shape_analysis then (
-    let open Shape_analyzer in
+  let log analyzer_kind =
     if not is_first then print_newline () else ();
-    Printf.printf "Shape analyzer. %s (L%d)\n" filename version;
+    Printf.printf "%s analyzer. %s (L%d)\n" analyzer_kind filename version
+  in
 
+  if !shape_analysis then (
+    log "Shape";
+
+    let open Shape_analyzer in
     let out_types =
       let type_of_hvalue hvalue =
         match type_of_hvalue hvalue with
@@ -49,4 +53,18 @@ let _ =
 
     if List.flatten out_types = [] then print_endline "Unsatisfiable!"
     else List.iter print_type_list out_types)
-  else ()
+  else (
+    log "Value";
+
+    let open Value_analyzer in
+    let empty_env _ = raise (RunError "undefined variable") in
+    let _ =
+      let+ i, _ = converted_samples in
+
+      (* TODO: merge hvalue' and hvalue *)
+      let input_bound_env = ("x", hvalue'_of_hvalue i) @: empty_env in
+      let result = eval input_bound_env root_expr in
+      result |> hvalue_of_hvalue' |> L.expr_of_hvalue |> L.string_of_exp
+      |> print_endline
+    in
+    ())

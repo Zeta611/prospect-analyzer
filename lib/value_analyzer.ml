@@ -1,8 +1,46 @@
+open L
+
 (* Types and exceptions *)
-type value = L.hvalue
-and number = int
-and env = id -> value
-and id = string
+module HoleCoeffs = struct
+  open Monads.List
+
+  type t = int list
+
+  let is_zero hole_coeffs =
+    List.find_opt (( <> ) 0) hole_coeffs |> Option.is_none
+
+  let length = List.length
+  let make = return
+
+  let rec ( +! ) h1 h2 =
+    match (h1, h2) with
+    | h, [] | [], h -> h
+    | x :: xs, y :: ys -> (x + y) :: (xs +! ys)
+
+  let ( ~-! ) h =
+    let+ k = h in
+    -k
+end
+
+(** Eventually, hvalue type must be generalized and use the following as well *)
+type hvalue' =
+  | HHole' of int
+  | HNum' of HoleCoeffs.t
+  | HPair' of hvalue' * hvalue'
+
+let rec hvalue'_of_hvalue = function
+  | HHole -> HHole' 1
+  | HNum n -> HNum' (HoleCoeffs.make n)
+  | HPair (h1, h2) -> HPair' (hvalue'_of_hvalue h1, hvalue'_of_hvalue h2)
+
+let rec hvalue_of_hvalue' = function
+  | HHole' 1 -> HHole
+  | HNum' [ n ] -> HNum n
+  | HPair' (h1, h2) -> HPair (hvalue_of_hvalue' h1, hvalue_of_hvalue' h2)
+  | _ -> failwith "[WIP] Conversion failure!"
+
+type id = string
+type env = id -> hvalue'
 
 type comp_op =
   | Eq (* =0 *)
@@ -12,80 +50,63 @@ type comp_op =
 (* | Gt (* >0 *) *)
 (* | Le (* ≤0 *) *)
 (* | Ge (* ≥0 *) *)
-and ih_coeffs = int list
-and cond_eqn = ih_coeffs * comp_op
+
+type cond_eqn = HoleCoeffs.t * comp_op
 
 exception TypeError of string
 exception RunError of string
 
-let rec expr_to_string = function
-  | L.Hole -> "[]"
-  | L.Num n -> string_of_int n
-  | L.Pair (e1, e2) -> "(" ^ expr_to_string e1 ^ "," ^ expr_to_string e2 ^ ")"
-  | L.Fst e -> expr_to_string e ^ ".1"
-  | L.Snd e -> expr_to_string e ^ ".2"
-  | L.Add (e1, e2) -> expr_to_string e1 ^ "+" ^ expr_to_string e2
-  | L.Neg e -> "-" ^ expr_to_string e
-  | L.Case (x, y, z, e1, e2) ->
-      "case " ^ expr_to_string x ^ " (" ^ y ^ "," ^ z ^ ") " ^ expr_to_string e1
-      ^ " " ^ expr_to_string e2
-  | L.If (e_p, e_t, e_f) ->
-      "if " ^ expr_to_string e_p ^ " " ^ expr_to_string e_t ^ " "
-      ^ expr_to_string e_f
-  | L.Let (x, exp, body) ->
-      "let " ^ x ^ " " ^ expr_to_string exp ^ " " ^ expr_to_string body
-  | L.Var x -> x
+let empty_env (_ : id) : hvalue' = raise (RunError "undefined variable")
 
-(* Environment augmentation *)
-(* Use ++ to bind (x, v) to f *)
-let ( ++ ) (e : env) ((x, v) : id * value) : env =
- fun y -> if y = x then v else e y
+(** Environment augmentation. Use @: to bind (x, v) to f *)
+let ( @: ) (x, v) e y = if y = x then v else e y
 
 let rec eval env expr =
+  let open HoleCoeffs in
   match expr with
-  | L.Hole -> L.HHole
-  | L.Num n -> L.HNum n
-  | L.Pair (e1, e2) ->
+  | Hole -> HHole' 1
+  | Num n -> HNum' (make n)
+  | Pair (e1, e2) ->
       let v1 = eval env e1 in
       let v2 = eval env e2 in
-      L.HPair (v1, v2)
-  | L.Fst e -> (
+      HPair' (v1, v2)
+  | Fst e -> (
       let pair = eval env e in
       match pair with
-      | L.HPair (fst, _) -> fst
+      | HPair' (fst, _) -> fst
       | _ -> raise (TypeError "FIRST: not a pair"))
-  | L.Snd e -> (
+  | Snd e -> (
       let pair = eval env e in
       match pair with
-      | L.HPair (_, snd) -> snd
+      | HPair' (_, snd) -> snd
       | _ -> raise (TypeError "SECOND: not a pair"))
-  | L.Add (e1, e2) -> (
+  | Add (e1, e2) -> (
       let lhs = eval env e1 in
       match lhs with
-      | L.HNum lhs_n -> (
+      | HNum' lhs_n -> (
           let rhs = eval env e2 in
           match rhs with
-          | L.HNum rhs_n -> L.HNum (lhs_n + rhs_n)
+          | HNum' rhs_n -> HNum' (lhs_n +! rhs_n)
           | _ -> raise (TypeError "ADD: lhs not a number"))
       | _ -> raise (TypeError "ADD: rhs not a number"))
-  | L.Neg e -> (
+  | Neg e -> (
       let num = eval env e in
       match num with
-      | L.HNum n -> L.HNum (-n)
+      | HNum' n -> HNum' ~-!n
       | _ -> raise (TypeError "NEGATE: not a number"))
-  | L.Case (x, y, z, e1, e2) -> (
+  | Case (x, y, z, e1, e2) -> (
       let v = eval env x in
       match v with
-      | L.HPair (v1, v2) ->
-          let env' = env ++ (y, v1) ++ (z, v2) in
+      | HPair' (v1, v2) ->
+          let env' = (y, v1) @: (z, v2) @: env in
           eval env' e1
       | _ -> eval env e2)
-  | L.If (pred, true_e, false_e) -> (
+  | If (pred, true_e, false_e) -> (
       let v = eval env pred in
       match v with
-      | L.HNum n -> eval env (if n <> 0 then true_e else false_e)
+      | HNum' n -> eval env (if is_zero n then false_e else true_e)
       | _ -> raise (TypeError "IF: pred not a number"))
-  | L.Let (x, exp, body) ->
+  | Let (x, exp, body) ->
       let v = eval env exp in
-      eval (env ++ (x, v)) body
-  | L.Var x -> env x
+      eval ((x, v) @: env) body
+  | Var x -> env x
