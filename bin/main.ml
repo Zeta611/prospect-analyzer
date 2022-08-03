@@ -64,7 +64,6 @@ let _ =
       (* TODO: merge hvalue' and hvalue *)
       let input_bound_env = ("x", hvalue'_of_hvalue i) @: empty_env in
       let result = eval input_bound_env root_expr in
-      result |> hvalue_of_hvalue' |> L.expr_of_hvalue |> L.string_of_exp
-      |> print_endline
+      result |> string_of_hvalue' |> print_endline
     in
     ())

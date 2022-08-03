@@ -42,6 +42,26 @@ let rec hvalue_of_hvalue' = function
   | HNum' _ -> failwith "[WIP] Arbitrary HNum' cannot be converted."
   | HPair' (h1, h2) -> HPair (hvalue_of_hvalue' h1, hvalue_of_hvalue' h2)
 
+let rec string_of_hvalue' = function
+  | HNum' hole_coeffs -> (
+      match hole_coeffs with
+      | [] -> failwith "Empty HoleCoeffs: This is a programming error!"
+      | [ n ] -> string_of_int n
+      | n :: ks ->
+          string_of_int n ^ " + "
+          ^
+          let rec string_of index = function
+            | [] -> ""
+            | k :: ks when k <> 0 ->
+                (if k <> 1 then string_of_int k else "")
+                ^ "[" ^ string_of_int index ^ "]"
+                ^ if ks <> [] then " + " ^ string_of (index + 1) ks else ""
+            | _ :: ks -> string_of (index + 1) ks
+          in
+          string_of 1 ks)
+  | HPair' (h1, h2) ->
+      "(" ^ string_of_hvalue' h1 ^ ", " ^ string_of_hvalue' h2 ^ ")"
+
 type id = string
 type env = id -> hvalue'
 
