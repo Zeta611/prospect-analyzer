@@ -34,12 +34,6 @@ let rec string_of_type = function
   | TyPair (e1, e2) -> "(" ^ string_of_type e1 ^ ", " ^ string_of_type e2 ^ ")"
   | TyVar tv -> tv
 
-let var_count = ref 0
-
-let new_var () =
-  incr var_count;
-  "τ" ^ string_of_int !var_count
-
 (* type env *)
 let lookup (x : id) (env : tp_env) : ty * path =
   try List.assoc x env
@@ -88,88 +82,97 @@ let rec unify (t1 : ty) (t2 : ty) : substitution =
     | _ -> raise UnificationError
 
 (** Modified M algorithm *)
-let rec infer (env : tp_env) (e : tagged_exp) (t : ty) :
+let infer (env : tp_env) (e : tagged_exp) (t : ty) :
     (substitution * path * tag list) list =
-  let open Monads.List in
-  (* Generate a list of s''s's from a non-branching expression with two
-     subexpressions *)
-  let gen_s''s's (t' : ty) (e1 : tagged_exp) (e2 : tagged_exp) (t1 : ty)
-      (t2 : ty) : (substitution * (path * path) * tag list) list =
-    let s = unify t t' in
-    let* s', p1, tg1 = infer (subst_env s env) e1 (s t1) in
-    let* s'', p2, tg2 = infer (subst_env (s' << s) env) e2 ((s' << s) t2) in
-    return (s'' << s' << s, (p1, p2), tg1 @ tg2)
+  let var_count = ref 0 in
+  let new_var () =
+    incr var_count;
+    "τ" ^ string_of_int !var_count
   in
-  try
-    match e with
-    | TgHole tg ->
-        let h_t = TyVar "τ" in
-        return (unify t h_t, PtNil, [ tg ])
-    | TgNum (tg, _) -> return (unify t TyInt, PtNil, [ tg ])
-    | TgVar (tg, x) ->
-        let x_t, _ = lookup x env in
-        return (unify t x_t, PtNil, [ tg ])
-    | TgPair (tg, e1, e2) ->
-        let t1 = TyVar (new_var ()) in
-        let t2 = TyVar (new_var ()) in
-        let+ s, (p1, p2), tgl = gen_s''s's (TyPair (t1, t2)) e1 e2 t1 t2 in
-        (s, PtPair (p1, p2), tg :: tgl)
-    | TgFst (tg, e) ->
-        let+ s, p, tgl = infer env e (TyPair (t, TyVar (new_var ()))) in
-        (s, p, tg :: tgl)
-    | TgSnd (tg, e) ->
-        let+ s, p, tgl = infer env e (TyPair (TyVar (new_var ()), t)) in
-        (s, p, tg :: tgl)
-    | TgAdd (tg, e1, e2) ->
-        let+ s, (p1, p2), tgl = gen_s''s's TyInt e1 e2 TyInt TyInt in
-        (s, PtAdd (p1, p2), tg :: tgl)
-    | TgNeg (tg, e) ->
-        let s = unify t TyInt in
-        let+ s', p, tgl = infer (subst_env s env) e (s TyInt) in
-        (* (s TyInt) -> TyInt ?*)
-        (s' << s, p, tg :: tgl)
-    | TgCase (tg, x, y, z, e1, e2) ->
-        let ls's_p =
-          (* x binds to (y, z) *)
-          let y_t = TyVar (new_var ()) in
-          let z_t = TyVar (new_var ()) in
-          let* s_p, x_p_p, x_p_tgl = infer env x (TyPair (y_t, z_t)) in
-          let* s'_p, e1_p, e1_tgl =
-            let env' = subst_env s_p env in
-            let y_t' = (s_p y_t, PtNil) in
-            let z_t' = (s_p z_t, PtNil) in
-            infer ((y, y_t') :: (z, z_t') :: env') e1 (s_p t)
+
+  let rec inner env e t =
+    let open Monads.List in
+    (* Generate a list of s''s's from a non-branching expression with two
+       subexpressions *)
+    let gen_s''s's (t' : ty) (e1 : tagged_exp) (e2 : tagged_exp) (t1 : ty)
+        (t2 : ty) : (substitution * (path * path) * tag list) list =
+      let s = unify t t' in
+      let* s', p1, tg1 = inner (subst_env s env) e1 (s t1) in
+      let* s'', p2, tg2 = inner (subst_env (s' << s) env) e2 ((s' << s) t2) in
+      return (s'' << s' << s, (p1, p2), tg1 @ tg2)
+    in
+    try
+      match e with
+      | TgHole tg ->
+          let h_t = TyVar "τ" in
+          return (unify t h_t, PtNil, [ tg ])
+      | TgNum (tg, _) -> return (unify t TyInt, PtNil, [ tg ])
+      | TgVar (tg, x) ->
+          let x_t, _ = lookup x env in
+          return (unify t x_t, PtNil, [ tg ])
+      | TgPair (tg, e1, e2) ->
+          let t1 = TyVar (new_var ()) in
+          let t2 = TyVar (new_var ()) in
+          let+ s, (p1, p2), tgl = gen_s''s's (TyPair (t1, t2)) e1 e2 t1 t2 in
+          (s, PtPair (p1, p2), tg :: tgl)
+      | TgFst (tg, e) ->
+          let+ s, p, tgl = inner env e (TyPair (t, TyVar (new_var ()))) in
+          (s, p, tg :: tgl)
+      | TgSnd (tg, e) ->
+          let+ s, p, tgl = inner env e (TyPair (TyVar (new_var ()), t)) in
+          (s, p, tg :: tgl)
+      | TgAdd (tg, e1, e2) ->
+          let+ s, (p1, p2), tgl = gen_s''s's TyInt e1 e2 TyInt TyInt in
+          (s, PtAdd (p1, p2), tg :: tgl)
+      | TgNeg (tg, e) ->
+          let s = unify t TyInt in
+          let+ s', p, tgl = inner (subst_env s env) e (s TyInt) in
+          (* (s TyInt) -> TyInt ?*)
+          (s' << s, p, tg :: tgl)
+      | TgCase (tg, x, y, z, e1, e2) ->
+          let ls's_p =
+            (* x binds to (y, z) *)
+            let y_t = TyVar (new_var ()) in
+            let z_t = TyVar (new_var ()) in
+            let* s_p, x_p_p, x_p_tgl = inner env x (TyPair (y_t, z_t)) in
+            let* s'_p, e1_p, e1_tgl =
+              let env' = subst_env s_p env in
+              let y_t' = (s_p y_t, PtNil) in
+              let z_t' = (s_p z_t, PtNil) in
+              inner ((y, y_t') :: (z, z_t') :: env') e1 (s_p t)
+            in
+            return (s'_p << s_p, PtCaseP (x_p_p, e1_p), tg :: (x_p_tgl @ e1_tgl))
           in
-          return (s'_p << s_p, PtCaseP (x_p_p, e1_p), tg :: (x_p_tgl @ e1_tgl))
-        in
-        let ls's_n =
-          (* x is TyInt *)
-          let* s_n, x_n_p, x_n_tgl = infer env x TyInt in
-          let* s'_n, e2_p, e2_tgl =
-            let env' = subst_env s_n env in
-            infer env' e2 (s_n t)
+          let ls's_n =
+            (* x is TyInt *)
+            let* s_n, x_n_p, x_n_tgl = inner env x TyInt in
+            let* s'_n, e2_p, e2_tgl =
+              let env' = subst_env s_n env in
+              inner env' e2 (s_n t)
+            in
+            return (s'_n << s_n, PtCaseN (x_n_p, e2_p), tg :: (x_n_tgl @ e2_tgl))
           in
-          return (s'_n << s_n, PtCaseN (x_n_p, e2_p), tg :: (x_n_tgl @ e2_tgl))
-        in
-        ls's_p @ ls's_n
-    | TgIf (tg, e_p, e_t, e_f) ->
-        let* s, e_p_p, e_p_tgl = infer env e_p TyInt in
-        let* s'_t, e_t_p, e_t_tgl = infer (subst_env s env) e_t (s t)
-        and+ s'_f, e_f_p, e_f_tgl = infer (subst_env s env) e_f (s t) in
-        [
-          (s'_t << s, PtIfTru (e_p_p, e_t_p), tg :: (e_p_tgl @ e_t_tgl));
-          (s'_f << s, PtIfFls (e_p_p, e_f_p), tg :: (e_p_tgl @ e_f_tgl));
-        ]
-    | TgLet (tg, x, v, e) ->
-        let x_t = TyVar (new_var ()) in
-        let* s, v_p, v_tgl = infer env v x_t in
-        let* s', e_p, e_tgl =
-          let env' = subst_env s env in
-          let x_tp' = (s x_t, v_p) in
-          infer ((x, x_tp') :: env') e (s t)
-        in
-        return (s' << s, PtLet (v_p, e_p), tg :: (v_tgl @ e_tgl))
-  with UnificationError -> []
+          ls's_p @ ls's_n
+      | TgIf (tg, e_p, e_t, e_f) ->
+          let* s, e_p_p, e_p_tgl = inner env e_p TyInt in
+          let* s'_t, e_t_p, e_t_tgl = inner (subst_env s env) e_t (s t)
+          and+ s'_f, e_f_p, e_f_tgl = inner (subst_env s env) e_f (s t) in
+          [
+            (s'_t << s, PtIfTru (e_p_p, e_t_p), tg :: (e_p_tgl @ e_t_tgl));
+            (s'_f << s, PtIfFls (e_p_p, e_f_p), tg :: (e_p_tgl @ e_f_tgl));
+          ]
+      | TgLet (tg, x, v, e) ->
+          let x_t = TyVar (new_var ()) in
+          let* s, v_p, v_tgl = inner env v x_t in
+          let* s', e_p, e_tgl =
+            let env' = subst_env s env in
+            let x_tp' = (s x_t, v_p) in
+            inner ((x, x_tp') :: env') e (s t)
+          in
+          return (s' << s, PtLet (v_p, e_p), tg :: (v_tgl @ e_tgl))
+    with UnificationError -> []
+  in
+  inner env e t
 
 let rec string_of_tagged_exp e =
   let open Colorizer in

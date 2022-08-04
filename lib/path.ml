@@ -41,42 +41,44 @@ type tagged_exp =
   | TgIf of tag * tagged_exp * tagged_exp * tagged_exp
   | TgLet of tag * id * tagged_exp * tagged_exp
 
-let tag_count = ref 0
-
-let new_tag () =
-  incr tag_count;
-  !tag_count
 (* let _ = tag_count := !tag_count + 1 in *)
 (* "ℓ" ^ string_of_int !tag_count *)
-
-let rec tag_exp (e : L.expr) : tagged_exp =
-  let tg = new_tag () in
-  match e with
-  | Hole -> TgHole tg
-  | Num n -> TgNum (tg, n)
-  | Var x -> TgVar (tg, x)
-  | Pair (e1, e2) ->
-      let te1 = tag_exp e1 in
-      let te2 = tag_exp e2 in
-      TgPair (tg, te1, te2)
-  | Fst e -> TgFst (tg, tag_exp e)
-  | Snd e -> TgSnd (tg, tag_exp e)
-  | Add (e1, e2) ->
-      let te1 = tag_exp e1 in
-      let te2 = tag_exp e2 in
-      TgAdd (tg, te1, te2)
-  | Neg e -> TgNeg (tg, tag_exp e)
-  | Case (x, y, z, e1, e2) ->
-      let tx = tag_exp x in
-      let te1 = tag_exp e1 in
-      let te2 = tag_exp e2 in
-      TgCase (tg, tx, y, z, te1, te2)
-  | If (e_p, e_t, e_f) ->
-      let te_p = tag_exp e_p in
-      let te_t = tag_exp e_t in
-      let te_f = tag_exp e_f in
-      TgIf (tg, te_p, te_t, te_f)
-  | Let (x, exp, body) ->
-      let te = tag_exp exp in
-      let tb = tag_exp body in
-      TgLet (tg, x, te, tb)
+let tag_exp (e : L.expr) : tagged_exp =
+  let tag_count = ref 0 in
+  let new_tag () =
+    incr tag_count;
+    !tag_count
+  in
+  let rec inner (e : L.expr) =
+    let tg = new_tag () in
+    match e with
+    | Hole -> TgHole tg
+    | Num n -> TgNum (tg, n)
+    | Var x -> TgVar (tg, x)
+    | Pair (e1, e2) ->
+        let te1 = inner e1 in
+        let te2 = inner e2 in
+        TgPair (tg, te1, te2)
+    | Fst e -> TgFst (tg, inner e)
+    | Snd e -> TgSnd (tg, inner e)
+    | Add (e1, e2) ->
+        let te1 = inner e1 in
+        let te2 = inner e2 in
+        TgAdd (tg, te1, te2)
+    | Neg e -> TgNeg (tg, inner e)
+    | Case (x, y, z, e1, e2) ->
+        let tx = inner x in
+        let te1 = inner e1 in
+        let te2 = inner e2 in
+        TgCase (tg, tx, y, z, te1, te2)
+    | If (e_p, e_t, e_f) ->
+        let te_p = inner e_p in
+        let te_t = inner e_t in
+        let te_f = inner e_f in
+        TgIf (tg, te_p, te_t, te_f)
+    | Let (x, exp, body) ->
+        let te = inner exp in
+        let tb = inner body in
+        TgLet (tg, x, te, tb)
+  in
+  inner e
