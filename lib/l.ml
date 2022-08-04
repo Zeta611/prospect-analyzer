@@ -37,10 +37,10 @@ and expr =
 let hole_value_of_plain_value (v : plain_value) : hole_value =
   (v : plain_value :> hole_value)
 
-let rec expr_of_hole_value : hole_value -> expr = function
+let rec expr_of_value = function
   | `Hole -> Hole
   | `Num n -> Num n
-  | `Pair (a, b) -> Pair (expr_of_hole_value a, expr_of_hole_value b)
+  | `Pair (a, b) -> Pair (expr_of_value a, expr_of_value b)
 
 let rec string_of_exp : expr -> string = function
   | Hole -> "[]"

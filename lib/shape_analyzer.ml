@@ -13,11 +13,6 @@ type ty =
 
 and tyvar = string
 
-type hvty =
-  | HVRoot
-  | HVLeft of hvty
-  | HVRight of hvty
-
 type tp_env = (id * (ty * path)) list
 
 type type_check_info = {
@@ -29,14 +24,9 @@ type type_check_info = {
 }
 
 (** Type of an hole_value without a hole *)
-let rec type_of_hole_value : L.hole_value -> ty option = function
-  | `Hole -> None
-  | `Num _ -> Some TyInt
-  | `Pair (a, b) ->
-      let open Monads.Option in
-      let* ta = type_of_hole_value a in
-      let* tb = type_of_hole_value b in
-      return (TyPair (ta, tb))
+let rec type_of_plain_value = function
+  | `Num _ -> TyInt
+  | `Pair (a, b) -> TyPair (type_of_plain_value a, type_of_plain_value b)
 
 exception UnificationError
 

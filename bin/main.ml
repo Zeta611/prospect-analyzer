@@ -40,7 +40,8 @@ let _ =
 
   let converted_samples =
     let+ i, o = samples in
-    L.(hole_value_of_plain_value i, hole_value_of_plain_value o)
+    (* L.(hole_value_of_plain_value i, hole_value_of_plain_value o) *)
+    (i, o)
   in
 
   let log analyzer_kind =
@@ -53,16 +54,11 @@ let _ =
 
     let open Shape_analyzer in
     let all_samples_out_types =
-      let type_of_hole_value hole_value =
-        match type_of_hole_value hole_value with
-        | Some t -> t
-        | None -> failwith "Hole should not exist in output"
-      in
       let+ i, o = converted_samples in
-      let iv, ot = (L.expr_of_hole_value i, type_of_hole_value o) in
+      let iv, ot = (L.expr_of_value i, type_of_plain_value o) in
       let out_types = type_check (L.Let ("x", iv, root_expr)) ot in
       Printf.printf "Sample: (%s, %s)\n" (L.string_of_exp iv)
-        (L.string_of_exp (L.expr_of_hole_value o));
+        (L.string_of_exp (L.expr_of_value o));
       if out_types = [] then print_endline "Unsatisfiable"
       else print_type_list out_types;
       print_newline ();

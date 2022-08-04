@@ -28,7 +28,7 @@ type value =
   | VNum of HoleCoeffs.t
   | VPair of value * value
 
-let rec value_of_hole_value : L.hole_value -> value =
+let rec value_of_hole_value =
   let open HoleCoeffs in
   function
   | `Hole -> VNum (add_hole (make_num 0))
