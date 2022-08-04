@@ -2,14 +2,26 @@ open Analyzer
 
 let usage_msg = "[-shape]"
 let shape_analysis = ref false
+let value_analysis = ref false
+let all_analyses = ref false
 let input_files = ref []
 let anon_fun filename = input_files := filename :: !input_files
-let speclist = [ ("-shape", Arg.Set shape_analysis, "Shape analysis") ]
+
+let speclist =
+  [
+    ("-shape", Arg.Set shape_analysis, "Shape analysis");
+    ("-value", Arg.Set value_analysis, "Value analysis");
+    ("-all", Arg.Set all_analyses, "Shape and value analyses");
+  ]
+
 let first_flag = ref true
 
 let _ =
   Arg.parse speclist anon_fun usage_msg;
   input_files := List.rev !input_files;
+
+  if !shape_analysis && !value_analysis then all_analyses := true
+  else if not (!shape_analysis || !value_analysis) then value_analysis := true;
 
   let open Monads.List in
   let+ filename = !input_files in
@@ -36,11 +48,11 @@ let _ =
     Printf.printf "%s analyzer. %s (L%d)\n" analyzer_kind filename version
   in
 
-  if !shape_analysis then (
+  if !all_analyses || !shape_analysis then (
     log "Shape";
 
     let open Shape_analyzer in
-    let out_types =
+    let all_samples_out_types =
       let type_of_hvalue hvalue =
         match type_of_hvalue hvalue with
         | Some t -> t
@@ -48,11 +60,16 @@ let _ =
       in
       let+ i, o = converted_samples in
       let iv, ot = (L.expr_of_hvalue i, type_of_hvalue o) in
-      type_check (L.Let ("x", iv, root_expr)) ot
+      let out_types = type_check (L.Let ("x", iv, root_expr)) ot in
+      Printf.printf "Sample: (%s, %s)\n" (L.string_of_exp iv)
+        (L.string_of_exp (L.expr_of_hvalue o));
+      if out_types = [] then print_endline "Unsatisfiable"
+      else print_type_list out_types;
+      print_newline ();
+      out_types
     in
-
-    if List.flatten out_types = [] then print_endline "Unsatisfiable!"
-    else List.iter print_type_list out_types)
+    if List.flatten all_samples_out_types = [] then
+      print_endline "Unsatisfiable for all samples!")
   else (
     log "Value";
 

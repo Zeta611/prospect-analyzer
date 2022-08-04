@@ -24,6 +24,7 @@ type type_check_info = {
   hole_type : ty;
   exp_type : ty;
   taken_path : path;
+  tagged_exp : tagged_exp;
   tag_list : tag list;
 }
 
@@ -184,32 +185,6 @@ let rec infer (env : tp_env) (e : tagged_exp) (t : ty) :
         return (s' << s, PtLet (v_p, e_p), tg :: (v_tgl @ e_tgl))
   with UnificationError -> []
 
-let rec print_type_list (typts : type_check_info list) : unit =
-  let open Colorizer in
-  let rec tags_to_string = function
-    | [] -> ""
-    | [ hd ] -> colorize_palette hd ("ℓ" ^ string_of_int hd)
-    | hd :: tl ->
-        colorize_palette hd ("ℓ" ^ string_of_int hd) ^ "-" ^ tags_to_string tl
-  in
-  match typts with
-  | { hole_type; exp_type; taken_path; tag_list } :: ps ->
-      let pt' =
-        match taken_path with
-        | PtLet (_, pt') -> pt'
-        | _ -> failwith "No top-level binding for x; programming error"
-      in
-      print_endline
-        ("| []: "
-        ^ colorize 009 (string_of_type hole_type)
-        ^ ", O: "
-        ^ colorize 009 (string_of_type exp_type)
-        ^ ", Trace: "
-        ^ colorize 011 (string_of_path pt')
-        ^ "; " ^ tags_to_string tag_list);
-      print_type_list ps
-  | [] -> ()
-
 let rec string_of_tagged_exp e =
   let open Colorizer in
   let parwrap t s = colorize_palette t "[" ^ s ^ colorize_palette t "]" in
@@ -240,12 +215,45 @@ let rec string_of_tagged_exp e =
       ^ string_of_tagged_exp body
       |> annot t |> parwrap t
 
+let rec print_type_list (typts : type_check_info list) : unit =
+  let open Colorizer in
+  let rec tags_to_string = function
+    | [] -> ""
+    | [ hd ] -> colorize_palette hd ("ℓ" ^ string_of_int hd)
+    | hd :: tl ->
+        colorize_palette hd ("ℓ" ^ string_of_int hd) ^ "-" ^ tags_to_string tl
+  in
+  match typts with
+  | { hole_type; exp_type; taken_path; tag_list; tagged_exp } :: ps ->
+      let pt' =
+        match taken_path with
+        | PtLet (_, pt') -> pt'
+        | _ -> failwith "No top-level binding for x; programming error"
+      in
+      print_endline (string_of_tagged_exp tagged_exp);
+      print_endline
+        ("| []: "
+        ^ colorize 009 (string_of_type hole_type)
+        ^ ", O: "
+        ^ colorize 009 (string_of_type exp_type)
+        ^ ", Trace: "
+        ^ colorize 011 (string_of_path pt')
+        ^ "; " ^ tags_to_string tag_list);
+      print_type_list ps
+  | [] -> ()
+
 (** Returns the possible combinations of the [] and the output *)
 let type_check (e : L.expr) (t : ty) : type_check_info list =
   let hole_type = TyVar "τ" in
-  let tagged_e = tag_exp e in
-  let () = print_endline (string_of_tagged_exp tagged_e) in
+  let tagged_exp = tag_exp e in
 
+  (* let () = print_endline (string_of_tagged_exp tagged_exp) in *)
   let open Monads.List in
-  let+ subst, taken_path, tag_list = infer [] tagged_e t in
-  { hole_type = subst hole_type; exp_type = subst t; taken_path; tag_list }
+  let+ subst, taken_path, tag_list = infer [] tagged_exp t in
+  {
+    hole_type = subst hole_type;
+    exp_type = subst t;
+    taken_path;
+    tagged_exp;
+    tag_list;
+  }
