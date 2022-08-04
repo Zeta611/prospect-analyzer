@@ -20,6 +20,13 @@ type hvty =
 
 type tp_env = (id * (ty * path)) list
 
+type type_check_info = {
+  hole_type : ty;
+  exp_type : ty;
+  taken_path : path;
+  tag_list : tag list;
+}
+
 let rec type_of_hvalue =
   let open L in
   function
@@ -92,14 +99,6 @@ let rec unify (t1 : ty) (t2 : ty) : substitution =
         if List.mem tv (tyvars_in_type t) then raise UnificationError
         else apply_subst (TyVar tv) t
     | _ -> raise UnificationError
-
-let map3 (f : 'a -> 'b -> 'c -> 'd) (la : 'a list) (lb : 'b list) (lc : 'c list)
-    : 'd list =
-  List.map2 (fun f c -> f c) (List.map2 f la lb) lc
-
-let map4 (f : 'a -> 'b -> 'c -> 'd -> 'e) (la : 'a list) (lb : 'b list)
-    (lc : 'c list) (ld : 'd list) : 'e list =
-  List.map2 (fun f d -> f d) (map3 f la lb lc) ld
 
 (** Modified M algorithm *)
 let rec infer (env : tp_env) (e : tagged_exp) (t : ty) :
@@ -185,7 +184,7 @@ let rec infer (env : tp_env) (e : tagged_exp) (t : ty) :
         return (s' << s, PtLet (v_p, e_p), tg :: (v_tgl @ e_tgl))
   with UnificationError -> []
 
-let rec print_type_list (typts : (ty * ty * path * tag list) list) : unit =
+let rec print_type_list (typts : type_check_info list) : unit =
   let open Colorizer in
   let rec tags_to_string = function
     | [] -> ""
@@ -194,20 +193,20 @@ let rec print_type_list (typts : (ty * ty * path * tag list) list) : unit =
         colorize_palette hd ("ℓ" ^ string_of_int hd) ^ "-" ^ tags_to_string tl
   in
   match typts with
-  | (ht, ot, pt, tgl) :: ps ->
+  | { hole_type; exp_type; taken_path; tag_list } :: ps ->
       let pt' =
-        match pt with
+        match taken_path with
         | PtLet (_, pt') -> pt'
         | _ -> failwith "No top-level binding for x; programming error"
       in
       print_endline
         ("| []: "
-        ^ colorize 009 (string_of_type ht)
+        ^ colorize 009 (string_of_type hole_type)
         ^ ", O: "
-        ^ colorize 009 (string_of_type ot)
+        ^ colorize 009 (string_of_type exp_type)
         ^ ", Trace: "
         ^ colorize 011 (string_of_path pt')
-        ^ "; " ^ tags_to_string tgl);
+        ^ "; " ^ tags_to_string tag_list);
       print_type_list ps
   | [] -> ()
 
@@ -242,11 +241,11 @@ let rec string_of_tagged_exp e =
       |> annot t |> parwrap t
 
 (** Returns the possible combinations of the [] and the output *)
-let type_check (e : L.expr) (t : ty) : (ty * ty * path * tag list) list =
+let type_check (e : L.expr) (t : ty) : type_check_info list =
   let hole_type = TyVar "τ" in
   let tagged_e = tag_exp e in
   let () = print_endline (string_of_tagged_exp tagged_e) in
 
   let open Monads.List in
-  let+ subst, pt, tgl = infer [] tagged_e t in
-  (subst hole_type, subst t, pt, tgl)
+  let+ subst, taken_path, tag_list = infer [] tagged_e t in
+  { hole_type = subst hole_type; exp_type = subst t; taken_path; tag_list }
