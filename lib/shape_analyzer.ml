@@ -8,7 +8,6 @@ type id = string
 type ty =
   | TyInt
   | TyPair of ty * ty
-  | TyHole
   | TyVar of tyvar
 
 and tyvar = string
@@ -33,7 +32,6 @@ exception UnificationError
 let rec string_of_type = function
   | TyInt -> "ι"
   | TyPair (e1, e2) -> "(" ^ string_of_type e1 ^ ", " ^ string_of_type e2 ^ ")"
-  | TyHole -> "[]"
   | TyVar tv -> tv
 
 let var_count = ref 0
@@ -75,7 +73,6 @@ let rec tyvars_in_type (t : ty) : tyvar list =
   | TyInt -> []
   | TyPair (t1, t2) -> union (tyvars_in_type t1) (tyvars_in_type t2)
   | TyVar tyvar -> [ tyvar ]
-  | TyHole -> [] (* TODO *)
 
 let ( << ) (subs' : substitution) (subs : substitution) : substitution =
  fun t -> subs' (subs t)
