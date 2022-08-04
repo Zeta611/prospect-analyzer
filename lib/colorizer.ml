@@ -8,7 +8,7 @@ let colorize (col : int) (text : string) : string =
   xterm_256_color col ^ text ^ reset
 
 let palette =
-  [ 046; 045; 166; 105; 226; 207; 063; 027; 165; 166; 219; 069; 202 ]
+  [ 046; 045; 166; 105; 214; 207; 063; 027; 165; 166; 219; 069; 202 ]
 
 let colorize_palette t =
   colorize (List.nth palette ((t - 1) mod List.length palette))
