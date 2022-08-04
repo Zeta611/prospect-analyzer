@@ -142,16 +142,16 @@ let rec infer (env : tp_env) (e : tagged_exp) (t : ty) :
           in
           return (s'_p << s_p, PtCaseP (x_p_p, e1_p), tg :: (x_p_tgl @ e1_tgl))
         in
-        let ls's_i =
+        let ls's_n =
           (* x is TyInt *)
-          let* s_i, x_i_p, x_i_tgl = infer env x TyInt in
-          let* s'_i, e2_p, e2_tgl =
-            let env' = subst_env s_i env in
-            infer env' e2 (s_i t)
+          let* s_n, x_n_p, x_n_tgl = infer env x TyInt in
+          let* s'_n, e2_p, e2_tgl =
+            let env' = subst_env s_n env in
+            infer env' e2 (s_n t)
           in
-          return (s'_i << s_i, PtCaseN (x_i_p, e2_p), tg :: (x_i_tgl @ e2_tgl))
+          return (s'_n << s_n, PtCaseN (x_n_p, e2_p), tg :: (x_n_tgl @ e2_tgl))
         in
-        ls's_p @ ls's_i
+        ls's_p @ ls's_n
     | TgIf (tg, e_p, e_t, e_f) ->
         let* s, e_p_p, e_p_tgl = infer env e_p TyInt in
         let* s'_t, e_t_p, e_t_tgl = infer (subst_env s env) e_t (s t)
@@ -201,32 +201,35 @@ let rec string_of_tagged_exp e =
       ^ string_of_tagged_exp body
       |> annot t |> parwrap t
 
-let rec print_type_list (typts : type_check_info list) : unit =
+let print_type_check_info
+    { hole_type; exp_type; taken_path; tag_list; tagged_exp } =
   let open Colorizer in
-  let rec tags_to_string = function
+  let rec string_of_tags = function
     | [] -> ""
     | [ hd ] -> colorize_palette hd ("ℓ" ^ string_of_int hd)
     | hd :: tl ->
-        colorize_palette hd ("ℓ" ^ string_of_int hd) ^ "-" ^ tags_to_string tl
+        colorize_palette hd ("ℓ" ^ string_of_int hd) ^ "-" ^ string_of_tags tl
   in
-  match typts with
-  | { hole_type; exp_type; taken_path; tag_list; tagged_exp } :: ps ->
-      let pt' =
-        match taken_path with
-        | PtLet (_, pt') -> pt'
-        | _ -> failwith "No top-level binding for x; programming error"
-      in
-      print_endline (string_of_tagged_exp tagged_exp);
-      print_endline
-        ("| []: "
-        ^ colorize 009 (string_of_type hole_type)
-        ^ ", O: "
-        ^ colorize 009 (string_of_type exp_type)
-        ^ ", Trace: "
-        ^ colorize 011 (string_of_path pt')
-        ^ "; " ^ tags_to_string tag_list);
-      print_type_list ps
+  let pt' =
+    match taken_path with
+    | PtLet (_, pt') -> pt'
+    | _ -> failwith "No top-level binding for x; programming error"
+  in
+  print_endline (string_of_tagged_exp tagged_exp);
+  print_endline
+    ("| []: "
+    ^ colorize 009 (string_of_type hole_type)
+    ^ ", O: "
+    ^ colorize 009 (string_of_type exp_type)
+    ^ ", Trace: "
+    ^ colorize 011 (string_of_path pt')
+    ^ "; " ^ string_of_tags tag_list)
+
+let rec print_type_list = function
   | [] -> ()
+  | info :: ps ->
+      print_type_check_info info;
+      print_type_list ps
 
 (** Returns the possible combinations of the [] and the output *)
 let type_check (e : L.expr) (t : ty) : type_check_info list =

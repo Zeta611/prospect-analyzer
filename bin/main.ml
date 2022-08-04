@@ -1,27 +1,15 @@
 open Analyzer
 
-let usage_msg = "[-shape]"
-let shape_analysis = ref false
-let value_analysis = ref false
+let usage_msg = "[-all]"
 let all_analyses = ref false
 let input_files = ref []
 let anon_fun filename = input_files := filename :: !input_files
-
-let speclist =
-  [
-    ("-shape", Arg.Set shape_analysis, "Shape analysis");
-    ("-value", Arg.Set value_analysis, "Value analysis");
-    ("-all", Arg.Set all_analyses, "Shape and value analyses");
-  ]
-
+let speclist = [ ("-all", Arg.Set all_analyses, "Shape and value analyses") ]
 let first_flag = ref true
 
 let _ =
   Arg.parse speclist anon_fun usage_msg;
   input_files := List.rev !input_files;
-
-  if !shape_analysis && !value_analysis then all_analyses := true
-  else if not (!shape_analysis || !value_analysis) then value_analysis := true;
 
   let open Monads.List in
   let+ filename = !input_files in
@@ -43,7 +31,38 @@ let _ =
     Printf.printf "%s analyzer. %s (L%d)\n" analyzer_kind filename version
   in
 
-  if !all_analyses || !shape_analysis then (
+  if !all_analyses then (
+    log "Shape & value";
+
+    let open Shape_analyzer in
+    let all_samples_out_types =
+      let+ i, o = samples in
+      let iv, ot = (L.expr_of_value i, type_of_plain_value o) in
+      let root_expr = L.Let ("x", iv, root_expr) in
+      let out_types = type_check root_expr ot in
+      Printf.printf "Sample: (%s, %s)\n" (L.string_of_exp iv)
+        (L.string_of_exp (L.expr_of_value o));
+      if out_types = [] then print_endline "Shape_analyzer: Unsatisfiable";
+
+      let* ({ hole_type; taken_path; _ } as out_type) = out_types in
+      let open Value_analyzer in
+      let empty_env _ = raise (RunError "undefined variable") in
+      let input_bound_env =
+        ("x", value_of_plain_value i ~hole_cnt:(count_holes hole_type))
+        @: empty_env
+      in
+      print_type_check_info out_type;
+      match eval input_bound_env root_expr taken_path hole_type with
+      | result ->
+          Printf.printf "| Eval: %s\n" (string_of_value result);
+          return (out_type, result)
+      | exception PathError msg ->
+          print_endline msg;
+          []
+    in
+    if List.flatten all_samples_out_types = [] then
+      print_endline "Unsatisfiable for all samples!")
+  else (
     log "Shape";
 
     let open Shape_analyzer in
@@ -60,15 +79,3 @@ let _ =
     in
     if List.flatten all_samples_out_types = [] then
       print_endline "Unsatisfiable for all samples!")
-  else (
-    log "Value";
-
-    let open Value_analyzer in
-    let empty_env _ = raise (RunError "undefined variable") in
-    let _ =
-      let+ i, _ = samples in
-      let input_bound_env = ("x", value_of_hole_value i) @: empty_env in
-      let result = eval input_bound_env root_expr in
-      result |> string_of_value |> print_endline
-    in
-    ())
