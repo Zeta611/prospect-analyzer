@@ -38,12 +38,6 @@ let _ =
   let version, samples, root_expr = l_program in
   let () = Util.check_version version root_expr in
 
-  let converted_samples =
-    let+ i, o = samples in
-    (* L.(hole_value_of_plain_value i, hole_value_of_plain_value o) *)
-    (i, o)
-  in
-
   let log analyzer_kind =
     if not is_first then print_newline () else ();
     Printf.printf "%s analyzer. %s (L%d)\n" analyzer_kind filename version
@@ -54,7 +48,7 @@ let _ =
 
     let open Shape_analyzer in
     let all_samples_out_types =
-      let+ i, o = converted_samples in
+      let+ i, o = samples in
       let iv, ot = (L.expr_of_value i, type_of_plain_value o) in
       let out_types = type_check (L.Let ("x", iv, root_expr)) ot in
       Printf.printf "Sample: (%s, %s)\n" (L.string_of_exp iv)
@@ -72,7 +66,7 @@ let _ =
     let open Value_analyzer in
     let empty_env _ = raise (RunError "undefined variable") in
     let _ =
-      let+ i, _ = converted_samples in
+      let+ i, _ = samples in
       let input_bound_env = ("x", value_of_hole_value i) @: empty_env in
       let result = eval input_bound_env root_expr in
       result |> string_of_value |> print_endline
