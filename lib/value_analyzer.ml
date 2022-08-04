@@ -24,26 +24,19 @@ module HoleCoeffs = struct
     -k
 end
 
-(** Eventually, hvalue type must be generalized and use the following as well *)
-type hvalue' =
-  | HNum' of HoleCoeffs.t
-  | HPair' of hvalue' * hvalue'
+type value =
+  | VNum of HoleCoeffs.t
+  | VPair of value * value
 
-let rec hvalue'_of_hvalue =
+let rec value_of_hole_value : L.hole_value -> value =
   let open HoleCoeffs in
   function
-  | HHole -> HNum' (add_hole (make_num 0))
-  | HNum n -> HNum' (make_num n)
-  | HPair (h1, h2) -> HPair' (hvalue'_of_hvalue h1, hvalue'_of_hvalue h2)
+  | `Hole -> VNum (add_hole (make_num 0))
+  | `Num n -> VNum (make_num n)
+  | `Pair (h1, h2) -> VPair (value_of_hole_value h1, value_of_hole_value h2)
 
-let rec hvalue_of_hvalue' = function
-  | HNum' [ n ] -> HNum n
-  | HNum' [ 0; 1 ] -> HHole
-  | HNum' _ -> failwith "[WIP] Arbitrary HNum' cannot be converted."
-  | HPair' (h1, h2) -> HPair (hvalue_of_hvalue' h1, hvalue_of_hvalue' h2)
-
-let rec string_of_hvalue' = function
-  | HNum' hole_coeffs -> (
+let rec string_of_value = function
+  | VNum hole_coeffs -> (
       match hole_coeffs with
       | [] -> failwith "Empty HoleCoeffs: This is a programming error!"
       | [ n ] -> string_of_int n
@@ -59,11 +52,10 @@ let rec string_of_hvalue' = function
             | _ :: ks -> string_of (index + 1) ks
           in
           string_of 1 ks)
-  | HPair' (h1, h2) ->
-      "(" ^ string_of_hvalue' h1 ^ ", " ^ string_of_hvalue' h2 ^ ")"
+  | VPair (h1, h2) -> "(" ^ string_of_value h1 ^ ", " ^ string_of_value h2 ^ ")"
 
 type id = string
-type env = id -> hvalue'
+type env = id -> value
 
 type comp_op =
   | Eq (* =0 *)
@@ -87,7 +79,7 @@ let raiseTypeError expected op =
   let msg = Printf.sprintf "%s: %s expected, not a %s" op expected current in
   raise (TypeError msg)
 
-let empty_env (_ : id) : hvalue' = raise (RunError "undefined variable")
+let empty_env (_ : id) : value = raise (RunError "undefined variable")
 
 (** Environment augmentation. Use @: to bind (x, v) to f *)
 let ( @: ) (x, v) e y = if y = x then v else e y
@@ -95,43 +87,43 @@ let ( @: ) (x, v) e y = if y = x then v else e y
 let rec eval env expr =
   let open HoleCoeffs in
   match expr with
-  | Hole -> HNum' (add_hole (make_num 0))
-  | Num n -> HNum' (make_num n)
+  | Hole -> VNum (add_hole (make_num 0))
+  | Num n -> VNum (make_num n)
   | Pair (e1, e2) ->
       let v1 = eval env e1 in
       let v2 = eval env e2 in
-      HPair' (v1, v2)
+      VPair (v1, v2)
   | Fst e -> (
       match eval env e with
-      | HPair' (fst, _) -> fst
-      | HNum' _ -> raiseTypeError `Pair "FIRST")
+      | VPair (fst, _) -> fst
+      | VNum _ -> raiseTypeError `Pair "FIRST")
   | Snd e -> (
       match eval env e with
-      | HPair' (_, snd) -> snd
-      | HNum' _ -> raiseTypeError `Pair "SECOND")
+      | VPair (_, snd) -> snd
+      | VNum _ -> raiseTypeError `Pair "SECOND")
   | Add (e1, e2) -> (
       match eval env e1 with
-      | HNum' lhs_n -> (
+      | VNum lhs_n -> (
           match eval env e2 with
-          | HNum' rhs_n -> HNum' (lhs_n +! rhs_n)
-          | HPair' _ -> raiseTypeError `Num "ADD")
-      | HPair' _ -> raiseTypeError `Num "ADD")
+          | VNum rhs_n -> VNum (lhs_n +! rhs_n)
+          | VPair _ -> raiseTypeError `Num "ADD")
+      | VPair _ -> raiseTypeError `Num "ADD")
   | Neg e -> (
       match eval env e with
-      | HNum' n -> HNum' ~-!n
-      | HPair' _ -> raiseTypeError `Num "NEGATE")
+      | VNum n -> VNum ~-!n
+      | VPair _ -> raiseTypeError `Num "NEGATE")
   | Case (x, y, z, e1, e2) -> (
       let v = eval env x in
       match v with
-      | HPair' (v1, v2) ->
+      | VPair (v1, v2) ->
           let env' = (y, v1) @: (z, v2) @: env in
           eval env' e1
       | _ -> eval env e2)
   | If (pred, true_e, false_e) -> (
       let v = eval env pred in
       match v with
-      | HNum' n -> eval env (if is_zero n then false_e else true_e)
-      | HPair' _ -> raiseTypeError `Num "IF")
+      | VNum n -> eval env (if is_zero n then false_e else true_e)
+      | VPair _ -> raiseTypeError `Num "IF")
   | Let (x, exp, body) ->
       let v = eval env exp in
       eval ((x, v) @: env) body

@@ -8,7 +8,7 @@ type id = string
 type ty =
   | TyInt
   | TyPair of ty * ty
-  | TyHole (* of hvtype? *)
+  | TyHole
   | TyVar of tyvar
 
 and tyvar = string
@@ -28,15 +28,14 @@ type type_check_info = {
   tag_list : tag list;
 }
 
-let rec type_of_hvalue =
-  let open L in
-  function
-  | HHole -> None
-  | HNum _ -> Some TyInt
-  | HPair (a, b) ->
+(** Type of an hole_value without a hole *)
+let rec type_of_hole_value : L.hole_value -> ty option = function
+  | `Hole -> None
+  | `Num _ -> Some TyInt
+  | `Pair (a, b) ->
       let open Monads.Option in
-      let* ta = type_of_hvalue a in
-      let* tb = type_of_hvalue b in
+      let* ta = type_of_hole_value a in
+      let* tb = type_of_hole_value b in
       return (TyPair (ta, tb))
 
 exception UnificationError
@@ -247,7 +246,6 @@ let type_check (e : L.expr) (t : ty) : type_check_info list =
   let hole_type = TyVar "τ" in
   let tagged_exp = tag_exp e in
 
-  (* let () = print_endline (string_of_tagged_exp tagged_exp) in *)
   let open Monads.List in
   let+ subst, taken_path, tag_list = infer [] tagged_exp t in
   {

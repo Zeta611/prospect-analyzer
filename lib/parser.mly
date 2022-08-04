@@ -25,8 +25,8 @@ samples:
   |  HASH vexpr vexpr samples { ($2, $3) :: $4 }
   ;
 vexpr:
-    NUM { L.VNum $1 }
-  | LPAR vexpr COMMA vexpr RPAR { L.VPair ($2, $4) }
+    NUM { `Num $1 }
+  | LPAR vexpr COMMA vexpr RPAR { `Pair ($2, $4) }
 expr:
     NUM { L.Num $1 }
   | VAR { L.Var $1 }
