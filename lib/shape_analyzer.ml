@@ -155,12 +155,15 @@ let infer (env : tp_env) (e : tagged_exp) (t : ty) :
           ls's_p @ ls's_n
       | TgIf (tg, e_p, e_t, e_f) ->
           let* s, e_p_p, e_p_tgl = inner env e_p TyInt in
-          let* s'_t, e_t_p, e_t_tgl = inner (subst_env s env) e_t (s t)
-          and+ s'_f, e_f_p, e_f_tgl = inner (subst_env s env) e_f (s t) in
-          [
-            (s'_t << s, PtIfTru (e_p_p, e_t_p), tg :: (e_p_tgl @ e_t_tgl));
-            (s'_f << s, PtIfFls (e_p_p, e_f_p), tg :: (e_p_tgl @ e_f_tgl));
-          ]
+          let ls's_t =
+            let+ s'_t, e_t_p, e_t_tgl = inner (subst_env s env) e_t (s t) in
+            (s'_t << s, PtIfTru (e_p_p, e_t_p), tg :: (e_p_tgl @ e_t_tgl))
+          in
+          let ls's_f =
+            let+ s'_f, e_f_p, e_f_tgl = inner (subst_env s env) e_f (s t) in
+            (s'_f << s, PtIfFls (e_p_p, e_f_p), tg :: (e_p_tgl @ e_f_tgl))
+          in
+          ls's_t @ ls's_f
       | TgLet (tg, x, v, e) ->
           let x_t = TyVar (new_var ()) in
           let* s, v_p, v_tgl = inner env v x_t in

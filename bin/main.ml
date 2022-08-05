@@ -57,7 +57,7 @@ let _ =
           Printf.printf "| Eval: %s\n" (string_of_value result);
           return (out_type, result)
       | exception PathError msg ->
-          print_endline msg;
+          Printf.printf "| %s\n" msg;
           []
     in
     if List.flatten all_samples_out_types = [] then

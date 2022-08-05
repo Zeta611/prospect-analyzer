@@ -1,20 +1,31 @@
 open L
 
 (* Types and exceptions *)
+let rec gcd2 a b =
+  match a mod b with 0 -> b | r -> gcd2 b r | exception Division_by_zero -> a
+
+let rec gcd = function [] -> 0 | [ x ] -> x | x :: xs -> gcd2 x (gcd xs)
 
 module HoleCoeffs = struct
   type t = int list
 
+  type cond_eqn =
+    | Eq0 of t
+    | Ne0 of t
+
   let zero len = List.init len (fun _ -> 0)
 
-  (* let is_zero hole_coeffs =
-   *   List.find_opt (( <> ) 0) hole_coeffs |> Option.is_none *)
+  (* TODO: Implement using cond_eqns *)
+  let can_be_zero cond_eqns n =
+    assert (List.length cond_eqns >= 0);
+    let a = List.hd n in
+    let g = gcd (List.tl n) in
+    (g = 0 && a = 0) || (g <> 0 && a mod g = 0)
 
-  (** TODO: Implement *)
-  let can_be_zero _ = true
-
-  (** TODO: Implement *)
-  let can_be_nonzero _ = true
+  (* TODO: Implement using cond_eqns *)
+  let can_be_nonzero cond_eqns n =
+    assert (List.length cond_eqns >= 0);
+    gcd (List.tl n) <> 0 || List.hd n <> 0
 
   let rec make ~index ~k ~hole_cnt =
     assert (index >= 0 && hole_cnt >= 0 && index <= hole_cnt);
@@ -93,16 +104,6 @@ let rec string_of_value = function
 type id = string
 type env = id -> value
 
-(* type comp_op =
- *   | Eq (\* =0 *\)
- *   | Ne (\* ≠0 *\)
- *   | Lt (\* <0 *\)
- *   | Gt (\* >0 *\)
- *   | Le (\* ≤0 *\)
- *   | Ge (\* ≥0 *\)
- * 
- * type cond_eqn = HoleCoeffs.t * comp_op *)
-
 exception TypeError of string
 exception RunError of string
 
@@ -125,73 +126,74 @@ let ( @: ) (x, v) e y = if y = x then v else e y
 let eval env expr guide_path hole_type =
   let hole = value_of_hole_type hole_type in
   let hole_cnt = count_holes hole_type in
+  let cond_eqns = [] in
 
-  let rec inner env expr (guide_path : Path.path) =
+  let rec inner env expr (guide_path : Path.path) cond_eqns =
     match (expr, guide_path) with
     | Hole, PtNil -> hole
     | Num n, PtNil -> VNum HoleCoeffs.(make ~index:0 ~k:n ~hole_cnt)
     | Pair (e1, e2), PtPair (p1, p2) ->
-        let v1 = inner env e1 p1 in
-        let v2 = inner env e2 p2 in
+        let v1 = inner env e1 p1 cond_eqns in
+        let v2 = inner env e2 p2 cond_eqns in
         VPair (v1, v2)
     | Fst e, p -> (
-        match inner env e p with
+        match inner env e p cond_eqns with
         | VPair (fst, _) -> fst
         | VNum _ -> raiseTypeError `Pair "FIRST")
     | Snd e, p -> (
-        match inner env e p with
+        match inner env e p cond_eqns with
         | VPair (_, snd) -> snd
         | VNum _ -> raiseTypeError `Pair "SECOND")
     | Add (e1, e2), PtAdd (p1, p2) -> (
-        match inner env e1 p1 with
+        match inner env e1 p1 cond_eqns with
         | VNum lhs_n -> (
-            match inner env e2 p2 with
+            match inner env e2 p2 cond_eqns with
             | VNum rhs_n -> VNum HoleCoeffs.(lhs_n +! rhs_n)
             | VPair _ -> raiseTypeError `Num "ADD")
         | VPair _ -> raiseTypeError `Num "ADD")
     | Neg e, p -> (
-        match inner env e p with
+        match inner env e p cond_eqns with
         | VNum n -> VNum HoleCoeffs.(~-!n)
         | VPair _ -> raiseTypeError `Num "NEGATE")
     | Case (x, y, z, e1, _), PtCaseP (x_p_p, e1_p) -> (
-        let v = inner env x x_p_p in
-        match v with
+        match inner env x x_p_p cond_eqns with
         | VPair (v1, v2) ->
             let env' = (y, v1) @: (z, v2) @: env in
-            inner env' e1 e1_p
+            inner env' e1 e1_p cond_eqns
         | VNum _ ->
             failwith
               "VNum found when guide_path expected VPair: This is a \
                programming error. 'Well typed' program cannot go wrong!")
     | Case (x, _, _, _, e2), PtCaseN (x_n_p, e2_p) -> (
-        let v = inner env x x_n_p in
-        match v with
+        match inner env x x_n_p cond_eqns with
         | VPair _ ->
             failwith
               "VPair found when guide_path expected VNum: This is a \
                programming error. 'Well typed' program cannot go wrong!"
-        | VNum _ -> inner env e2 e2_p)
+        | VNum _ -> inner env e2 e2_p cond_eqns)
     | If (pred, true_e, _), PtIfTru (e_p_p, e_t_p) -> (
-        let v = inner env pred e_p_p in
-        match v with
-        | VNum n when HoleCoeffs.can_be_nonzero n -> inner env true_e e_t_p
-        | VNum _ ->
-            raise
-              (PathError
-                 "Falsy value found when guide_path expected a truthy value")
+        match inner env pred e_p_p cond_eqns with
+        | VNum n ->
+            if HoleCoeffs.can_be_nonzero cond_eqns n then
+              inner env true_e e_t_p (HoleCoeffs.Ne0 n :: cond_eqns)
+            else
+              raise
+                (PathError
+                   "Falsy value found when guide_path expected a truthy value")
         | VPair _ -> raiseTypeError `Num "IF")
     | If (pred, _, false_e), PtIfFls (e_p_p, e_f_p) -> (
-        let v = inner env pred e_p_p in
-        match v with
-        | VNum n when HoleCoeffs.can_be_zero n -> inner env false_e e_f_p
-        | VNum _ ->
-            raise
-              (PathError
-                 "Falsy value found when guide_path expected a truthy value")
+        match inner env pred e_p_p cond_eqns with
+        | VNum n ->
+            if HoleCoeffs.can_be_zero cond_eqns n then
+              inner env false_e e_f_p (HoleCoeffs.Eq0 n :: cond_eqns)
+            else
+              raise
+                (PathError
+                   "Falsy value found when guide_path expected a truthy value")
         | VPair _ -> raiseTypeError `Num "IF")
     | Let (x, exp, body), PtLet (v_p, e_p) ->
-        let v = inner env exp v_p in
-        inner ((x, v) @: env) body e_p
+        let v = inner env exp v_p cond_eqns in
+        inner ((x, v) @: env) body e_p cond_eqns
     | Var x, PtNil -> env x
     | e, p ->
         failwith
@@ -199,4 +201,4 @@ let eval env expr guide_path hole_type =
              "Path mismatch: This is a programming error\nexpr: %s\npath: %s\n"
              (string_of_exp e) (Path.string_of_path p))
   in
-  inner env expr guide_path
+  inner env expr guide_path cond_eqns
