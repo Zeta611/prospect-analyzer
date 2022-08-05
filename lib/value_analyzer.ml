@@ -32,7 +32,7 @@ module HoleCoeffs = struct
     if index = 0 then k :: zero hole_cnt
     else 0 :: make ~index:(index - 1) ~k ~hole_cnt:(hole_cnt - 1)
 
-  let length = List.length
+  let hole_count n = List.length n - 1
 
   let ( +! ) h1 h2 =
     let open Monads.List in
@@ -202,3 +202,16 @@ let eval env expr guide_path hole_type =
              (string_of_exp e) (Path.string_of_path p))
   in
   inner env expr guide_path cond_eqns
+
+let rec unify_result_with_output (result : value) (output : L.plain_value) :
+    bool =
+  match (result, output) with
+  | VNum n_r, `Num n_o ->
+      let open HoleCoeffs in
+      let n = n_r +! make ~index:0 ~k:(-n_o) ~hole_cnt:(hole_count n_r) in
+      (* TODO: Make use of cond_eqns *)
+      can_be_zero [] n
+  | VPair (p1_r, p2_r), `Pair (p1_o, p2_o) ->
+      unify_result_with_output p1_r p1_o && unify_result_with_output p2_r p2_o
+  | VNum _, `Pair _ -> raiseTypeError `Pair "UNIFY"
+  | VPair _, `Num _ -> raiseTypeError `Num "UNIFY"

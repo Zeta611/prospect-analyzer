@@ -54,8 +54,13 @@ let _ =
       print_type_check_info out_type;
       match eval input_bound_env root_expr taken_path hole_type with
       | result ->
-          Printf.printf "| Eval: %s\n" (string_of_value result);
-          return (out_type, result)
+          Printf.printf "| Eval: %s" (string_of_value result);
+          if unify_result_with_output result o then (
+            print_newline ();
+            return (out_type, result))
+          else (
+            print_endline " failed to unify with the output";
+            [])
       | exception PathError msg ->
           Printf.printf "| %s\n" msg;
           []
