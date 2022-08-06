@@ -2,9 +2,17 @@ open L
 
 (* Types and exceptions *)
 let rec gcd2 a b =
-  match a mod b with 0 -> b | r -> gcd2 b r | exception Division_by_zero -> a
+  match a mod b with
+  | 0 -> abs b
+  | r -> gcd2 b r
+  | exception Division_by_zero -> abs a
 
-let rec gcd = function [] -> 0 | [ x ] -> x | x :: xs -> gcd2 x (gcd xs)
+let rec gcd = function
+  | [] -> 0
+  | [ x ] -> x
+  | x :: x' :: xs ->
+      let g = gcd2 x x' in
+      if g = 1 then 1 else gcd2 g (gcd xs)
 
 module HoleCoeffs = struct
   type t = int list
