@@ -1,5 +1,7 @@
 (library
- (name analyzer))
+ (name analyzer)
+ (libraries z3)
+ (preprocess (pps ppx_deriving.show)))
 
 (ocamllex lexer)
 

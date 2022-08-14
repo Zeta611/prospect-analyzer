@@ -15,25 +15,14 @@ let rec gcd = function
       if g = 1 then 1 else gcd2 g (gcd xs)
 
 module HoleCoeffs = struct
-  type t = int list
+  type t = int list [@@deriving show]
 
-  type cond_eqn =
-    | Eq0 of t
-    | Ne0 of t
+  type cond_checker = {
+    context : Z3.context;
+    solver : Z3.Solver.solver;
+  }
 
   let zero len = List.init len (fun _ -> 0)
-
-  (* TODO: Implement using cond_eqns *)
-  let can_be_zero cond_eqns n =
-    assert (List.length cond_eqns >= 0);
-    let a = List.hd n in
-    let d = gcd (List.tl n) in
-    a = 0 || (d <> 0 && a mod d = 0)
-
-  (* TODO: Implement using cond_eqns *)
-  let can_be_nonzero cond_eqns n =
-    assert (List.length cond_eqns >= 0);
-    List.exists (fun k -> k <> 0) n
 
   let rec make ~index ~k ~hole_cnt =
     assert (index >= 0 && hole_cnt >= 0 && index <= hole_cnt);
@@ -51,6 +40,44 @@ module HoleCoeffs = struct
     let open Monads.List in
     let+ k = h in
     -k
+
+  let to_z3_expr context n =
+    let open Z3.Arithmetic in
+    let xs = ref [] in
+    for k = hole_count n - 1 downto 0 do
+      let x = Integer.mk_const_s context ("x_" ^ string_of_int k) in
+      let k = Integer.mk_numeral_i context (List.nth n (k + 1)) in
+      let kx = mk_mul context [ k; x ] in
+      xs := kx :: !xs
+    done;
+    let a = Integer.mk_numeral_i context (List.hd n) in
+    mk_add context (a :: !xs)
+
+  let can_be_zero { context; solver } n =
+    let open Z3 in
+    let n_expr = to_z3_expr context n in
+    let z_expr = Arithmetic.Integer.mk_numeral_i context 0 in
+    let phi = Boolean.mk_eq context n_expr z_expr in
+    Solver.add solver [ phi ];
+    match Solver.check solver [] with
+    | SATISFIABLE -> true
+    | UNSATISFIABLE -> false
+    | UNKNOWN ->
+        Printf.eprintf "CAN_BE_ZERO: %s with %s" "Unknown Z3 result" (show n);
+        true
+
+  let can_be_nonzero { context; solver } n =
+    let open Z3 in
+    let n_expr = to_z3_expr context n in
+    let z_expr = Arithmetic.Integer.mk_numeral_i context 0 in
+    let phi = Boolean.mk_not context @@ Boolean.mk_eq context n_expr z_expr in
+    Solver.add solver [ phi ];
+    match Solver.check solver [] with
+    | SATISFIABLE -> true
+    | UNSATISFIABLE -> false
+    | UNKNOWN ->
+        Printf.eprintf "CAN_BE_NONZERO: %s with %s" "Unknown Z3 result" (show n);
+        true
 end
 
 type value =
@@ -134,74 +161,78 @@ let ( @: ) (x, v) e y = if y = x then v else e y
 let eval env expr guide_path hole_type =
   let hole = value_of_hole_type hole_type in
   let hole_cnt = count_holes hole_type in
-  let cond_eqns = [] in
 
-  let rec inner env expr (guide_path : Path.path) cond_eqns =
+  let open HoleCoeffs in
+  let checker =
+    let context = Z3.mk_context [ ("model", "false"); ("proof", "false") ] in
+    { context; solver = Z3.Solver.mk_solver context None }
+  in
+  let rec inner env expr (guide_path : Path.path) (checker : cond_checker) =
     match (expr, guide_path) with
     | Hole, PtNil -> hole
     | Num n, PtNil -> VNum HoleCoeffs.(make ~index:0 ~k:n ~hole_cnt)
     | Pair (e1, e2), PtPair (p1, p2) ->
-        let v1 = inner env e1 p1 cond_eqns in
-        let v2 = inner env e2 p2 cond_eqns in
+        let v1 = inner env e1 p1 checker in
+        let v2 = inner env e2 p2 checker in
         VPair (v1, v2)
     | Fst e, p -> (
-        match inner env e p cond_eqns with
+        match inner env e p checker with
         | VPair (fst, _) -> fst
         | VNum _ -> raiseTypeError `Pair "FIRST")
     | Snd e, p -> (
-        match inner env e p cond_eqns with
+        match inner env e p checker with
         | VPair (_, snd) -> snd
         | VNum _ -> raiseTypeError `Pair "SECOND")
     | Add (e1, e2), PtAdd (p1, p2) -> (
-        match inner env e1 p1 cond_eqns with
+        match inner env e1 p1 checker with
         | VNum lhs_n -> (
-            match inner env e2 p2 cond_eqns with
+            match inner env e2 p2 checker with
             | VNum rhs_n -> VNum HoleCoeffs.(lhs_n +! rhs_n)
             | VPair _ -> raiseTypeError `Num "ADD")
         | VPair _ -> raiseTypeError `Num "ADD")
     | Neg e, p -> (
-        match inner env e p cond_eqns with
+        match inner env e p checker with
         | VNum n -> VNum HoleCoeffs.(~-!n)
         | VPair _ -> raiseTypeError `Num "NEGATE")
     | Case (x, y, z, e1, _), PtCaseP (x_p_p, e1_p) -> (
-        match inner env x x_p_p cond_eqns with
+        match inner env x x_p_p checker with
         | VPair (v1, v2) ->
             let env' = (y, v1) @: (z, v2) @: env in
-            inner env' e1 e1_p cond_eqns
+            inner env' e1 e1_p checker
         | VNum _ ->
             failwith
               "VNum found when guide_path expected VPair: This is a \
                programming error. 'Well typed' program cannot go wrong!")
     | Case (x, _, _, _, e2), PtCaseN (x_n_p, e2_p) -> (
-        match inner env x x_n_p cond_eqns with
+        match inner env x x_n_p checker with
         | VPair _ ->
             failwith
               "VPair found when guide_path expected VNum: This is a \
                programming error. 'Well typed' program cannot go wrong!"
-        | VNum _ -> inner env e2 e2_p cond_eqns)
+        | VNum _ -> inner env e2 e2_p checker)
     | If (pred, true_e, _), PtIfTru (e_p_p, e_t_p) -> (
-        match inner env pred e_p_p cond_eqns with
+        match inner env pred e_p_p checker with
         | VNum n ->
-            if HoleCoeffs.can_be_nonzero cond_eqns n then
-              inner env true_e e_t_p (HoleCoeffs.Ne0 n :: cond_eqns)
+            if HoleCoeffs.can_be_nonzero checker n then
+              inner env true_e e_t_p checker
             else
               raise
                 (PathError
                    "Falsy value found when guide_path expected a truthy value")
         | VPair _ -> raiseTypeError `Num "IF")
     | If (pred, _, false_e), PtIfFls (e_p_p, e_f_p) -> (
-        match inner env pred e_p_p cond_eqns with
+        match inner env pred e_p_p checker with
         | VNum n ->
-            if HoleCoeffs.can_be_zero cond_eqns n then
-              inner env false_e e_f_p (HoleCoeffs.Eq0 n :: cond_eqns)
+            if HoleCoeffs.can_be_zero checker n then
+              inner env false_e e_f_p checker
             else
               raise
                 (PathError
                    "Falsy value found when guide_path expected a truthy value")
         | VPair _ -> raiseTypeError `Num "IF")
     | Let (x, exp, body), PtLet (v_p, e_p) ->
-        let v = inner env exp v_p cond_eqns in
-        inner ((x, v) @: env) body e_p cond_eqns
+        let v = inner env exp v_p checker in
+        inner ((x, v) @: env) body e_p checker
     | Var x, PtNil -> env x
     | e, p ->
         failwith
@@ -209,7 +240,7 @@ let eval env expr guide_path hole_type =
              "Path mismatch: This is a programming error\nexpr: %s\npath: %s\n"
              (string_of_exp e) (Path.string_of_path p))
   in
-  inner env expr guide_path cond_eqns
+  inner env expr guide_path checker
 
 let rec unify_result_with_output (result : value) (output : L.plain_value) :
     bool =
@@ -218,7 +249,13 @@ let rec unify_result_with_output (result : value) (output : L.plain_value) :
       let open HoleCoeffs in
       let n = n_r +! make ~index:0 ~k:(-n_o) ~hole_cnt:(hole_count n_r) in
       (* TODO: Make use of cond_eqns *)
-      can_be_zero [] n
+      let checker =
+        let context =
+          Z3.mk_context [ ("model", "false"); ("proof", "false") ]
+        in
+        { context; solver = Z3.Solver.mk_solver context None }
+      in
+      can_be_zero checker n
   | VPair (p1_r, p2_r), `Pair (p1_o, p2_o) ->
       unify_result_with_output p1_r p1_o && unify_result_with_output p2_r p2_o
   | VNum _, `Pair _ -> raiseTypeError `Pair "UNIFY"
