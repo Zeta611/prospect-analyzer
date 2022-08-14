@@ -52,10 +52,10 @@ let _ =
         @: empty_env
       in
       print_type_check_info out_type;
-      match eval input_bound_env root_expr taken_path hole_type with
-      | result ->
+      match eval input_bound_env root_expr taken_path hole_type o with
+      | success, result ->
           Printf.printf "| Eval: %s" (string_of_value result);
-          if unify_result_with_output result o then (
+          if success then (
             print_newline ();
             return (out_type, result))
           else (

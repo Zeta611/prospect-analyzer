@@ -158,7 +158,7 @@ let empty_env (_ : id) : value = raise (RunError "undefined variable")
 (** Environment augmentation. Use @: to bind (x, v) to f *)
 let ( @: ) (x, v) e y = if y = x then v else e y
 
-let eval env expr guide_path hole_type =
+let eval env expr guide_path hole_type (output : L.plain_value) =
   let hole = value_of_hole_type hole_type in
   let hole_cnt = count_holes hole_type in
 
@@ -240,23 +240,23 @@ let eval env expr guide_path hole_type =
              "Path mismatch: This is a programming error\nexpr: %s\npath: %s\n"
              (string_of_exp e) (Path.string_of_path p))
   in
-  inner env expr guide_path checker
-
-let rec unify_result_with_output (result : value) (output : L.plain_value) :
-    bool =
-  match (result, output) with
-  | VNum n_r, `Num n_o ->
-      let open HoleCoeffs in
-      let n = n_r +! make ~index:0 ~k:(-n_o) ~hole_cnt:(hole_count n_r) in
-      (* TODO: Make use of cond_eqns *)
-      let checker =
-        let context =
-          Z3.mk_context [ ("model", "false"); ("proof", "false") ]
+  let rec unify result output =
+    match (result, output) with
+    | VNum n_r, `Num n_o ->
+        let open HoleCoeffs in
+        let n = n_r +! make ~index:0 ~k:(-n_o) ~hole_cnt:(hole_count n_r) in
+        (* TODO: Make use of cond_eqns *)
+        let checker =
+          let context =
+            Z3.mk_context [ ("model", "false"); ("proof", "false") ]
+          in
+          { context; solver = Z3.Solver.mk_solver context None }
         in
-        { context; solver = Z3.Solver.mk_solver context None }
-      in
-      can_be_zero checker n
-  | VPair (p1_r, p2_r), `Pair (p1_o, p2_o) ->
-      unify_result_with_output p1_r p1_o && unify_result_with_output p2_r p2_o
-  | VNum _, `Pair _ -> raiseTypeError `Pair "UNIFY"
-  | VPair _, `Num _ -> raiseTypeError `Num "UNIFY"
+        can_be_zero checker n
+    | VPair (p1_r, p2_r), `Pair (p1_o, p2_o) ->
+        unify p1_r p1_o && unify p2_r p2_o
+    | VNum _, `Pair _ -> raiseTypeError `Pair "UNIFY"
+    | VPair _, `Num _ -> raiseTypeError `Num "UNIFY"
+  in
+  let result = inner env expr guide_path checker in
+  (unify result output, result)
