@@ -27,13 +27,13 @@ module HoleCoeffs = struct
   let can_be_zero cond_eqns n =
     assert (List.length cond_eqns >= 0);
     let a = List.hd n in
-    let g = gcd (List.tl n) in
-    (g = 0 && a = 0) || (g <> 0 && a mod g = 0)
+    let d = gcd (List.tl n) in
+    a = 0 || (d <> 0 && a mod d = 0)
 
   (* TODO: Implement using cond_eqns *)
   let can_be_nonzero cond_eqns n =
     assert (List.length cond_eqns >= 0);
-    gcd (List.tl n) <> 0 || List.hd n <> 0
+    List.exists (fun k -> k <> 0) n
 
   let rec make ~index ~k ~hole_cnt =
     assert (index >= 0 && hole_cnt >= 0 && index <= hole_cnt);
