@@ -1,25 +1,7 @@
 module HoleCoeffs : sig
   type t = int list
 
-  type cond_checker = {
-    context : Z3.context;
-    solver : Z3.Solver.solver;
-  }
-
-  val zero : int -> int list
-  val make : index:int -> k:int -> hole_cnt:int -> int list
   val hole_count : 'a list -> int
-
-  val ( +! ) :
-    int Monads.ListBaseApplicative.t ->
-    int Monads.ListBaseApplicative.t ->
-    int Monads.ListBaseApplicative.t
-
-  val ( ~-! ) :
-    int Monads.ListBaseApplicative.t -> int Monads.ListBaseApplicative.t
-
-  val can_be_zero : cond_checker -> t -> bool
-  val can_be_nonzero : cond_checker -> t -> bool
 end
 
 type value =
