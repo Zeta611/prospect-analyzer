@@ -1,19 +1,6 @@
 open L
 
 (* Types and exceptions *)
-let rec gcd2 a b =
-  match a mod b with
-  | 0 -> abs b
-  | r -> gcd2 b r
-  | exception Division_by_zero -> abs a
-
-let rec gcd = function
-  | [] -> 0
-  | [ x ] -> x
-  | x :: x' :: xs ->
-      let g = gcd2 x x' in
-      if g = 1 then 1 else gcd2 g (gcd xs)
-
 module HoleCoeffs = struct
   type t = int list [@@deriving show]
 
@@ -91,9 +78,6 @@ let rec value_of_plain_value v ~hole_cnt =
       VPair
         (value_of_plain_value h1 ~hole_cnt, value_of_plain_value h2 ~hole_cnt)
 
-let failTypeVariableFound () =
-  failwith "hole_type contains a type variable: This is a programming error!"
-
 (** Count the number of the leaves in the hole type inferred by Shape_analyzer *)
 let rec count_holes : Shape_analyzer.ty -> number = function
   | TyInt | TyVar _ -> 1
@@ -152,8 +136,6 @@ let raiseTypeError expected op =
   in
   let msg = Printf.sprintf "%s: %s expected, not a %s" op expected current in
   raise (TypeError msg)
-
-let empty_env (_ : id) : value = raise (RunError "undefined variable")
 
 (** Environment augmentation. Use @: to bind (x, v) to f *)
 let ( @: ) (x, v) e y = if y = x then v else e y
