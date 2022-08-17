@@ -4,11 +4,10 @@
 %token <string> VAR
 %token HASH HOLE LPAR RPAR COMMA FST SND PLUS MINUS CASE IF LET EOF
 
-%right LET
-%nonassoc CASE IF
+%nonassoc IF
 %left PLUS MINUS
 %right FST SND
-%nonassoc LANG NUM HOLE VAR LPAR RPAR COMMA EOF
+%nonassoc VAR RPAR
 
 %type <L.prog> program
 
