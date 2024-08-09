@@ -1,4 +1,4 @@
 (executable
- (public_name L)
+ (public_name prospect_analyzer)
  (name main)
  (libraries analyzer))

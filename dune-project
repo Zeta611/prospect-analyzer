@@ -1,12 +1,12 @@
 (lang dune 3.2)
 (using menhir 2.0)
 
-(name L)
+(name prospect_analyzer)
 
 (generate_opam_files true)
 
 (source
- (github Zeta611/L))
+ (github Zeta611/prospect-analyzer))
 
 (authors "Jay Lee")
 
@@ -15,9 +15,9 @@
 (license MIT)
 
 (package
- (name L)
- (synopsis "L")
- (description "L")
+ (name prospect_analyzer)
+ (synopsis "prospect analyzer")
+ (description "prospect analyzer")
  (depends ocaml dune))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/dune-files.html#dune-project
