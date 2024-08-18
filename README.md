@@ -1,4 +1,5 @@
-# Ln
+# Prospect Analyzer
+
 See the [documentation](ln.pdf) for the target language syntax and semantics.
 
 The shape analyzer determines which paths are "shape-safe", and the value analyzer checks if each path can indeed yield the provided output value.
@@ -6,15 +7,19 @@ The shape analysis uses a non-deterministic Damas-Milner type inference, since t
 The value analysis utilizes the Z3 theorem prover to prune branches as early as possible, as well as to unify with the output value.
 
 ## Usage
+
 To run, execute
+
 ```sh
 ./_build/default/bin/main.exe -all test.l
 ```
+
 after `dune build`.
 
 When the flag `-all` is omitted, only shape analysis is done.
 
 ## Sample code
+
 ```
 # lang 1
 # (0, 0) 1
@@ -26,7 +31,9 @@ if (a + b)
   if (a + b) (a + a + 1) b
   if (a + b) b (a + a + 1)
 ```
+
 should output
+
 ```
 Shape & value analyzer. tests/test_7.l (L1)
 Sample: ((0, 0), 1)
@@ -56,5 +63,6 @@ Sample: ((1, 1), 0)
 | []: (ι, ι), O: ι, Trace: let . = (.) in (let . = (.) in (let . = (.) in (if (. + .) = 0 if (. + .) = 0 . + . + .))); ℓ1-ℓ2-ℓ3-ℓ4-ℓ5-ℓ6-ℓ7-ℓ8-ℓ9-ℓ10-ℓ11-ℓ12-ℓ13-ℓ14-ℓ15-ℓ16-ℓ27-ℓ28-ℓ29-ℓ30-ℓ32-ℓ33-ℓ34-ℓ35-ℓ36
 | Eval: 1 + 2[2] failed to unify with the output
 ```
+
 The output is xterm-256 colorized:
 ![Capture](./capture.png)
