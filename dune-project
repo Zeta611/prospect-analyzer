@@ -18,6 +18,13 @@
  (name prospect_analyzer)
  (synopsis "prospect analyzer")
  (description "prospect analyzer")
- (depends ocaml dune))
+ (depends
+  ocaml
+  (ocaml-base-compiler
+   (= 5.3.0))
+  menhir
+  dune
+  z3
+  ppx_deriving))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/dune-files.html#dune-project

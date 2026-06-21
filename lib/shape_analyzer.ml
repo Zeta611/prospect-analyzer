@@ -173,7 +173,7 @@ let infer (env : tp_env) (e : tagged_exp) (t : ty) :
             inner ((x, x_tp') :: env') e (s t)
           in
           return (s' << s, PtLet (v_p, e_p), tg :: (v_tgl @ e_tgl))
-    with UnificationError -> []
+    with UnificationError | TypeError _ -> []
   in
   inner env e t
 

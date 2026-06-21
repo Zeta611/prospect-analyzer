@@ -227,13 +227,6 @@ let eval env expr guide_path hole_type (output : L.plain_value) =
     | VNum n_r, `Num n_o ->
         let open HoleCoeffs in
         let n = n_r +! make ~index:0 ~k:(-n_o) ~hole_cnt:(hole_count n_r) in
-        (* TODO: Make use of cond_eqns *)
-        let checker =
-          let context =
-            Z3.mk_context [ ("model", "false"); ("proof", "false") ]
-          in
-          { context; solver = Z3.Solver.mk_solver context None }
-        in
         can_be_zero checker n
     | VPair (p1_r, p2_r), `Pair (p1_o, p2_o) ->
         unify p1_r p1_o && unify p2_r p2_o

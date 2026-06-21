@@ -9,7 +9,11 @@ homepage: "https://github.com/Zeta611/prospect-analyzer"
 bug-reports: "https://github.com/Zeta611/prospect-analyzer/issues"
 depends: [
   "ocaml"
+  "ocaml-base-compiler" {= "5.3.0"}
+  "menhir"
   "dune" {>= "3.2"}
+  "z3"
+  "ppx_deriving"
   "odoc" {with-doc}
 ]
 build: [

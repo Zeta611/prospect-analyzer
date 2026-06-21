@@ -1,3 +1,6 @@
+.envrc
+.direnv
+
 l
 lexer.ml
 parser.ml
